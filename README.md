@@ -29,6 +29,28 @@ Or run directly:
 deno run -A src/main.ts --help
 ```
 
+## Install (binary)
+
+Build a standalone macOS binary:
+
+```bash
+deno task compile:mac
+```
+
+Install it and the bundled profiles (default prefix is `/usr/local`):
+
+```bash
+sudo ./scripts/install.sh
+```
+
+To install without sudo, choose a user prefix:
+
+```bash
+PREFIX="$HOME/.local" ./scripts/install.sh
+```
+
+You can override profile search with `MACBOX_PROFILES_DIR=/path/to/profiles`.
+
 ## Usage
 
 ### Run an agent in a new/reused worktree
@@ -130,8 +152,9 @@ When you *choose* to relax that, you can compose profile snippets via:
 
 Profile search order:
 
-1) `~/.config/macbox/profiles/<name>.json`
-2) `<repo>/profiles/<name>.json` (bundled)
+1) `$MACBOX_PROFILES_DIR/<name>.json` (if set)
+2) `~/.config/macbox/profiles/<name>.json`
+3) Bundled profiles next to the binary (or `<prefix>/share/macbox/profiles`) and `<repo>/profiles/<name>.json`
 
 You can also pass a direct file path as the profile value (e.g. `--profile ./myprofile.json`).
 
@@ -408,4 +431,3 @@ Print the contract itself:
 deno run -A src/main.ts skills contract
 deno run -A src/main.ts skills contract --json
 ```
-

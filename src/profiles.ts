@@ -81,11 +81,48 @@ export const userProfilesDir = (): string => {
   return pathJoin(base, "macbox", "profiles");
 };
 
+const envProfilesDir = (): string | null => {
+  const raw = Deno.env.get("MACBOX_PROFILES_DIR");
+  if (!raw) return null;
+  const p = raw.trim();
+  if (!p) return null;
+  if (p.startsWith("/")) return normalizePath(p);
+  return normalizePath(pathJoin(Deno.cwd(), p));
+};
+
+const dirExists = (p: string): boolean => {
+  try {
+    const st = Deno.statSync(p);
+    return st.isDirectory;
+  } catch {
+    return false;
+  }
+};
+
 export const bundledProfilesDir = (): string => {
-  // src/profiles.ts -> ../profiles
+  const candidates: string[] = [];
+  try {
+    const execPath = Deno.execPath();
+    const cut = execPath.lastIndexOf("/");
+    if (cut > 0) {
+      const execDir = execPath.slice(0, cut);
+      candidates.push(pathJoin(execDir, "profiles"));
+      candidates.push(pathJoin(execDir, "..", "share", "macbox", "profiles"));
+    }
+  } catch {
+    // ignore
+  }
+
+  // src/profiles.ts -> ../profiles (repo layout fallback)
   const u = new URL("../profiles/", import.meta.url);
   // URL.pathname is already absolute; on macOS it starts with '/'
-  return decodeURIComponent(u.pathname.replace(/\/$/, ""));
+  const repoDir = decodeURIComponent(u.pathname.replace(/\/$/, ""));
+  candidates.push(repoDir);
+
+  for (const c of candidates) {
+    if (dirExists(c)) return c;
+  }
+  return repoDir;
 };
 
 const tryReadJsonFile = async (path: string): Promise<unknown | null> => {
@@ -105,7 +142,9 @@ export const resolveProfileFile = (nameOrPath: string): ReadonlyArray<string> =>
     return [normalizePath(p)];
   }
   const name = nameOrPath;
+  const envDir = envProfilesDir();
   return [
+    ...(envDir ? [pathJoin(envDir, `${name}.json`)] : []),
     pathJoin(userProfilesDir(), `${name}.json`),
     pathJoin(bundledProfilesDir(), `${name}.json`),
   ];
@@ -182,6 +221,10 @@ const listJsonNames = async (dir: string): Promise<string[]> => {
 
 export const listAvailableProfiles = async (): Promise<ReadonlyArray<string>> => {
   const names = new Set<string>();
+  const envDir = envProfilesDir();
+  if (envDir) {
+    for (const n of await listJsonNames(envDir)) names.add(n);
+  }
   for (const n of await listJsonNames(bundledProfilesDir())) names.add(n);
   for (const n of await listJsonNames(userProfilesDir())) names.add(n);
   return [...names.values()].sort((a, b) => a.localeCompare(b));
