@@ -1,0 +1,5 @@
+{
+  "name": "agent-claude",
+  "description": "Claude Code agent defaults: allow Mach service lookup (Keychain + system services). Keeps file writes restricted to the worktree; auth typically uses macOS Keychain.",
+  "mach_lookup": true
+}

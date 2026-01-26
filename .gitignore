@@ -1,0 +1,6 @@
+# Deno
+deno.lock
+.DS_Store
+
+# local build artifacts
+*.log

@@ -1,0 +1,5 @@
+{
+  "name": "host-ssh",
+  "description": "Read-only access to ~/.ssh on the host (weakens boundary; prefer SSH agent forwarding in future steps).",
+  "read_paths": ["~/.ssh"]
+}

@@ -1,0 +1,5 @@
+{
+  "name": "agent-codex",
+  "description": "Codex agent defaults: allow Mach service lookup (for optional keyring auth). Codex config/auth are redirected into sandbox HOME via CODEX_HOME.",
+  "mach_lookup": true
+}

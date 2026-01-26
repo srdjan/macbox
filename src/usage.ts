@@ -1,0 +1,75 @@
+export const printHelp = () => {
+  const s = `
+macbox — run AI agents in a native macOS sandbox (Seatbelt) using git worktrees
+
+Usage:
+  macbox run   [--agent claude|codex] [--cmd <path>] [--worktree <name>] [--branch <branch>]
+               [--profile <name[,name2...]>] [--allow-network|--block-network] [--allow-exec|--block-exec]
+               [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>] [--debug] [--trace]
+               [--session <latest|worktreeName|repoId/worktreeName>] [--repo <path>] [--base <path>] -- <agent args...>
+
+  macbox shell [--agent claude|codex] [--worktree <name>] [--allow-network|--block-network] [--allow-exec|--block-exec]
+               [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>] [--debug] [--trace]
+               [--profile <name[,name2...]>]
+               [--session <latest|worktreeName|repoId/worktreeName>] [--repo <path>] [--base <path>] -- <shell args...>
+
+  macbox attach <repoId/worktreeName | latest>
+               [--profile <name[,name2...]>] [--allow-network|--block-network] [--allow-exec|--block-exec]
+               [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>] [--debug] [--trace]
+               [--base <path>] -- <shell args...>
+
+  macbox skills list [--json] [--worktree <name>] [--session <ref>] [--repo <path>] [--base <path>]
+  macbox skills describe <name> [--json] [--worktree <name>] [--session <ref>] [--repo <path>] [--base <path>]
+  macbox skills registry [--json] [--write] [--committed] [--worktree <name>] [--session <ref>] [--repo <path>] [--base <path>]
+  macbox skills contract [--json]
+  macbox skills path <name> [--file <skill.json|run.ts|README.md|dir>] [--worktree <name>] [--session <ref>] [--repo <path>] [--base <path>]
+  macbox skills edit <name> [--file <...>] [--worktree <name>] [--session <ref>] [--repo <path>] [--base <path>]
+  macbox skills init <name> [--local] [--worktree <name>] [--session <ref>] [--repo <path>] [--base <path>]
+  macbox skills run  <name> [--json] [--capture] [--result <path>] [--worktree <name>] [--session <ref>] [--agent claude|codex]
+               [--profile <name[,name2...]>] [--allow-network|--block-network] [--allow-exec|--block-exec]
+               [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>] [--debug] [--trace]
+               [--repo <path>] [--base <path>] -- <skill args...>
+
+  macbox sessions list [--repo <path>] [--base <path>] [--agent claude|codex]
+  macbox sessions show <id|worktreeName|latest> [--repo <path>] [--base <path>] [--agent claude|codex]
+  macbox sessions delete <id|worktreeName> [--repo <path>] [--base <path>] [--agent claude|codex]
+  macbox sessions clean [--all] [--repo <path>] [--base <path>]
+
+  macbox clean [--worktree <name> | --all] [--repo <path>] [--base <path>]
+
+  macbox profiles list
+  macbox profiles show <name>
+
+Notes:
+  • Sessions are persisted under: <base>/sessions/<repoId>/<worktree>.json
+    Use 'macbox attach <id>' to re-open a saved sandbox with the same defaults.
+  • Passing --agent automatically composes a bundled profile (agent-claude or agent-codex).
+    For 'shell', if --worktree is omitted, macbox uses ai-<agent> (e.g., ai-claude).
+    You can still add more with --profile, and everything is additive.
+  • For Codex, macbox sets CODEX_HOME inside the sandbox HOME to keep ~/.codex off the host.
+
+  - Uses /usr/bin/sandbox-exec to apply a Seatbelt sandbox profile.
+  - --trace writes sandbox denial logs to: <worktree>/.macbox/logs/sandbox-violations.log
+  - --profile composes additional read/write allowlists into the sandbox profile.
+    Built-ins live under: <repo>/profiles/*.json
+    User profiles live under: ~/.config/macbox/profiles/*.json
+  - Creates worktrees under: <base>/worktrees/<repoId>/<worktree>
+  - Agent HOME/caches/tmp live under: <worktree>/.macbox/
+
+Examples:
+  deno run -A src/main.ts run --agent claude -- --help
+  deno run -A src/main.ts run --agent claude --trace -- --help
+  deno run -A src/main.ts run --agent claude --profile host-tools -- --help
+  deno run -A src/main.ts profiles list
+  deno run -A src/main.ts profiles show host-tools
+  deno run -A src/main.ts run --agent codex --worktree ai-codex -- --help
+  deno run -A src/main.ts shell --worktree ai -- /bin/zsh -l
+  deno run -A src/main.ts shell --worktree ai --trace -- /bin/zsh -l
+  deno run -A src/main.ts skills list --worktree ai
+  deno run -A src/main.ts skills init fmt --worktree ai
+  deno run -A src/main.ts skills run fmt --worktree ai -- --help
+  deno run -A src/main.ts clean --worktree ai
+
+`;
+  console.log(s.trim());
+};

@@ -1,0 +1,14 @@
+{
+  "name": "host-tools",
+  "description": "Read-only access to common user-installed toolchain locations under your *host* home directory (weakens boundary; opt-in only).",
+  "read_paths": [
+    "~/.local/bin",
+    "~/.bun/bin",
+    "~/.cargo/bin",
+    "~/.asdf",
+    "~/.nvm",
+    "~/.volta",
+    "~/.npm-global",
+    "~/.deno/bin"
+  ]
+}
