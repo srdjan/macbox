@@ -164,6 +164,9 @@ macbox sessions list --repo .
 # show latest session (helps you find the worktree path)
 macbox sessions show latest --repo .
 
+# delete a specific session
+macbox sessions delete <id>
+
 # reuse the latest session defaults
 macbox shell --session latest --repo .
 macbox run --session latest --repo . --agent claude -- --help
@@ -386,13 +389,13 @@ macbox skills run fmt --worktree ai --profile host-tools -- --check
 
 macbox injects a few env vars when executing a skill:
 
-- `macbox_WORKTREE`: absolute worktree path
-- `macbox_SKILL`: skill name
-- `macbox_SKILL_DIR`: absolute skill directory
-- `macbox_SESSION`: a short session id for the invocation
-- `macbox_SKILL_ARGS_JSON`: JSON array of args passed after `--`
-- `macbox_RESULT_PATH`: absolute path to write a JSON result (optional)
-- `macbox_RESULT_FORMAT`: defaults to `json`
+- `MACBOX_WORKTREE`: absolute worktree path
+- `MACBOX_SKILL`: skill name
+- `MACBOX_SKILL_DIR`: absolute skill directory
+- `MACBOX_SESSION`: a short session id for the invocation
+- `MACBOX_SKILL_ARGS_JSON`: JSON array of args passed after `--`
+- `MACBOX_RESULT_PATH`: absolute path to write a JSON result (optional)
+- `MACBOX_RESULT_FORMAT`: defaults to `json`
 
 You can view the contract any time:
 
@@ -412,10 +415,10 @@ macbox skills run fmt --worktree ai --json -- --check
 macbox will:
 
 1. capture stdout/stderr
-2. look for JSON at `$macbox_RESULT_PATH`
+2. look for JSON at `$MACBOX_RESULT_PATH`
 3. print a single JSON envelope (`macbox.skills.run.v1`) to stdout
 
-If your skill writes JSON to `$macbox_RESULT_PATH`, it will show up as `result`
+If your skill writes JSON to `$MACBOX_RESULT_PATH`, it will show up as `result`
 in the envelope.
 
 If you want capture without an envelope, use `--capture`.
@@ -455,7 +458,7 @@ macbox skills edit repo-summary --file run.ts --worktree ai
 
 ```ts
 // repo-summary/run.ts
-const worktree = Deno.env.get("macbox_WORKTREE") ?? "";
+const worktree = Deno.env.get("MACBOX_WORKTREE") ?? "";
 const args = Deno.args;
 
 const out = {
@@ -469,7 +472,7 @@ for await (const _e of Deno.readDir(worktree)) count++;
 out.topLevelEntries = count;
 
 // Optional structured result:
-const resultPath = Deno.env.get("macbox_RESULT_PATH");
+const resultPath = Deno.env.get("MACBOX_RESULT_PATH");
 if (resultPath) {
   await Deno.writeTextFile(resultPath, JSON.stringify(out, null, 2) + "\n");
 }
