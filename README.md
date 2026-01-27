@@ -22,15 +22,15 @@ This is **macOS-native** (not Linux containers). It's meant to feel like "packnp
 Download the latest release from GitHub:
 
 ```bash
-curl -fsSL https://github.com/srdjans/macbox/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/srdjan/macbox/releases/latest/download/install.sh | bash
 ```
 
 Or install manually:
 
 ```bash
 # Download binary and profiles
-curl -fsSL -o /tmp/macbox https://github.com/srdjans/macbox/releases/latest/download/macbox
-curl -fsSL -o /tmp/profiles.tar.gz https://github.com/srdjans/macbox/releases/latest/download/profiles.tar.gz
+curl -fsSL -o /tmp/macbox https://github.com/srdjan/macbox/releases/latest/download/macbox
+curl -fsSL -o /tmp/profiles.tar.gz https://github.com/srdjan/macbox/releases/latest/download/profiles.tar.gz
 
 # Install to /usr/local (requires sudo)
 sudo install -m 755 /tmp/macbox /usr/local/bin/macbox
