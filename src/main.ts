@@ -7,6 +7,7 @@ import { profilesCmd } from "./profiles_cmd.ts";
 import { sessionsCmd } from "./sessions_cmd.ts";
 import { attachCmd } from "./attach.ts";
 import { skillsCmd } from "./skills_cmd.ts";
+import { presetsCmd } from "./presets_cmd.ts";
 import { printHelp } from "./usage.ts";
 
 export type Exit = { readonly code: number };
@@ -36,6 +37,8 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
       return await attachCmd(rest);
     case "skills":
       return await skillsCmd(rest);
+    case "presets":
+      return await presetsCmd(rest);
     case "help":
     default:
       printHelp();

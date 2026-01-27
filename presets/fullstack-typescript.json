@@ -1,0 +1,22 @@
+{
+  "name": "fullstack-typescript",
+  "description": "Full-stack TypeScript development with Node.js and Deno toolchains",
+  "agent": "claude",
+  "profiles": ["host-tools"],
+  "capabilities": {
+    "network": true,
+    "exec": true,
+    "extraReadPaths": [
+      "/opt/homebrew",
+      "~/.nvm",
+      "~/.volta",
+      "~/.deno"
+    ],
+    "extraWritePaths": []
+  },
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "worktreePrefix": "ai-fullstack",
+  "startPoint": "main"
+}

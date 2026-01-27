@@ -1,0 +1,21 @@
+{
+  "name": "rust-dev",
+  "description": "Rust systems development with Cargo and rustup toolchains",
+  "agent": "claude",
+  "profiles": ["host-tools"],
+  "capabilities": {
+    "network": true,
+    "exec": true,
+    "extraReadPaths": [
+      "/opt/homebrew",
+      "~/.cargo",
+      "~/.rustup"
+    ],
+    "extraWritePaths": []
+  },
+  "env": {
+    "RUST_BACKTRACE": "1"
+  },
+  "worktreePrefix": "ai-rust",
+  "startPoint": "main"
+}

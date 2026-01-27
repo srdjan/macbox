@@ -166,6 +166,91 @@ macbox ships bundled profiles that are auto-applied when you pass `--agent`:
 
 ---
 
+## Presets
+
+Presets bundle agent configuration, profiles, capabilities, and environment variables into reusable templates. Use them to define complete development workflow configurations.
+
+### List and inspect presets
+
+```bash
+macbox presets list
+macbox presets show fullstack-typescript
+```
+
+### Run with a preset
+
+```bash
+# Run with a preset - applies agent, profiles, capabilities, and env vars
+macbox run --preset fullstack-typescript -- --help
+
+# Shell with a preset
+macbox shell --preset python-ml
+
+# CLI flags override preset defaults
+macbox run --preset fullstack-typescript --block-network -- --help
+```
+
+### Bundled presets
+
+macbox ships with these presets:
+
+- `fullstack-typescript`: Node.js and Deno toolchains, `host-tools` profile, `NODE_ENV=development`
+- `python-ml`: Python with pip, pyenv, virtualenvs, `host-tools` profile
+- `rust-dev`: Cargo and rustup toolchains, `host-tools` profile, `RUST_BACKTRACE=1`
+
+### Create your own preset
+
+```bash
+# Create from template
+macbox presets create my-preset --template fullstack-typescript
+
+# Or create a blank preset
+macbox presets create my-preset
+
+# Edit the preset
+macbox presets edit my-preset
+
+# Delete a user preset
+macbox presets delete my-preset
+```
+
+Presets are stored in `~/.config/macbox/presets/<name>.json`.
+
+### Preset schema
+
+```json
+{
+  "name": "my-preset",
+  "description": "My custom development preset",
+  "agent": "claude",
+  "model": "claude-sonnet-4-20250514",
+  "profiles": ["host-tools", "host-ssh"],
+  "capabilities": {
+    "network": true,
+    "exec": true,
+    "extraReadPaths": ["/opt/homebrew", "~/.nvm"],
+    "extraWritePaths": []
+  },
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "worktreePrefix": "ai-mypreset",
+  "startPoint": "main"
+}
+```
+
+Preset fields:
+
+- `agent`: `claude`, `codex`, or `custom`
+- `model`: Model identifier (written to agent config in sandbox home)
+- `profiles`: Array of profile names to compose
+- `capabilities`: Network, exec, and filesystem permissions
+- `env`: Environment variables to inject into the sandbox
+- `worktreePrefix`: Default worktree name prefix (e.g., `ai-mypreset` becomes `ai-mypreset-ai`)
+- `startPoint`: Default git ref for new worktrees
+
+---
+
 ## Sessions
 
 macbox persists a **session record per repo/worktree** so you can quickly re-open a sandbox with the same defaults.

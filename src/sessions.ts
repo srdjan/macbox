@@ -19,6 +19,8 @@ export type SessionRecord = {
   readonly gitCommonDir: string;
   readonly gitDir: string;
   readonly agent?: AgentKind;
+  readonly preset?: string;
+  readonly presetSource?: string;
   readonly profiles: ReadonlyArray<string>;
   readonly caps: SessionCaps;
   readonly debug: boolean;
@@ -47,6 +49,8 @@ export const saveSession = async (args: {
   readonly gitCommonDir: string;
   readonly gitDir: string;
   readonly agent?: AgentKind;
+  readonly preset?: string;
+  readonly presetSource?: string;
   readonly profiles: ReadonlyArray<string>;
   readonly caps: SessionCaps;
   readonly debug: boolean;
@@ -75,6 +79,8 @@ export const saveSession = async (args: {
     gitCommonDir: args.gitCommonDir,
     gitDir: args.gitDir,
     agent: args.agent,
+    preset: args.preset,
+    presetSource: args.presetSource,
     profiles: args.profiles,
     caps: args.caps,
     debug: args.debug,

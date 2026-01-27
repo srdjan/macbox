@@ -4,13 +4,14 @@ macbox — run AI agents in a native macOS sandbox (Seatbelt) using git worktree
 
 Usage:
   macbox run   [--agent claude|codex] [--cmd <path>] [--worktree <name>] [--branch <branch>]
-               [--profile <name[,name2...]>] [--allow-network|--block-network] [--allow-exec|--block-exec]
+               [--preset <name>] [--profile <name[,name2...]>]
+               [--allow-network|--block-network] [--allow-exec|--block-exec]
                [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>] [--debug] [--trace]
                [--session <latest|worktreeName|repoId/worktreeName>] [--repo <path>] [--base <path>] -- <agent args...>
 
-  macbox shell [--agent claude|codex] [--worktree <name>] [--allow-network|--block-network] [--allow-exec|--block-exec]
+  macbox shell [--agent claude|codex] [--worktree <name>] [--preset <name>]
+               [--profile <name[,name2...]>] [--allow-network|--block-network] [--allow-exec|--block-exec]
                [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>] [--debug] [--trace]
-               [--profile <name[,name2...]>]
                [--session <latest|worktreeName|repoId/worktreeName>] [--repo <path>] [--base <path>] -- <shell args...>
 
   macbox attach <repoId/worktreeName | latest>
@@ -40,6 +41,12 @@ Usage:
   macbox profiles list
   macbox profiles show <name>
 
+  macbox presets list
+  macbox presets show <name>
+  macbox presets create <name> [--template <preset>]
+  macbox presets edit <name>
+  macbox presets delete <name>
+
 Notes:
   • Sessions are persisted under: <base>/sessions/<repoId>/<worktree>.json
     Use 'macbox attach <id>' to re-open a saved sandbox with the same defaults.
@@ -47,6 +54,11 @@ Notes:
     For 'shell', if --worktree is omitted, macbox uses ai-<agent> (e.g., ai-claude).
     You can still add more with --profile, and everything is additive.
   • For Codex, macbox sets CODEX_HOME inside the sandbox HOME to keep ~/.codex off the host.
+
+  • Presets bundle agent, profiles, capabilities, and environment into reusable configurations.
+    Use --preset <name> with run/shell to apply a preset. CLI flags override preset defaults.
+    Built-in presets: fullstack-typescript, python-ml, rust-dev
+    User presets live under: ~/.config/macbox/presets/*.json
 
   - Uses /usr/bin/sandbox-exec to apply a Seatbelt sandbox profile.
   - --trace writes sandbox denial logs to: <worktree>/.macbox/logs/sandbox-violations.log
@@ -60,6 +72,11 @@ Examples:
   deno run -A src/main.ts run --agent claude -- --help
   deno run -A src/main.ts run --agent claude --trace -- --help
   deno run -A src/main.ts run --agent claude --profile host-tools -- --help
+  deno run -A src/main.ts run --preset fullstack-typescript -- --help
+  deno run -A src/main.ts shell --preset python-ml
+  deno run -A src/main.ts presets list
+  deno run -A src/main.ts presets show fullstack-typescript
+  deno run -A src/main.ts presets create my-preset --template fullstack-typescript
   deno run -A src/main.ts profiles list
   deno run -A src/main.ts profiles show host-tools
   deno run -A src/main.ts run --agent codex --worktree ai-codex -- --help

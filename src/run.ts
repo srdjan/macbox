@@ -19,6 +19,13 @@ import {
   resolveSessionIdForRepo,
   saveSession,
 } from "./sessions.ts";
+import {
+  expandPath,
+  loadPreset,
+  type LoadedPreset,
+  validatePresetPaths,
+  writeAgentConfig,
+} from "./presets.ts";
 
 const asString = (v: string | boolean | undefined): string | undefined =>
   v === undefined
@@ -49,7 +56,15 @@ export const runCmd = async (argv: ReadonlyArray<string>) => {
   const repoHint = asString(a.flags.repo);
   const base = asString(a.flags.base) ?? defaultBaseDir();
 
-  const agentFlagRaw = asString(a.flags.agent) ?? "custom";
+  // Load preset if specified
+  const presetName = asString(a.flags.preset);
+  let presetConfig: LoadedPreset | null = null;
+  if (presetName) {
+    presetConfig = await loadPreset(presetName);
+  }
+
+  // Agent selection: CLI flag > preset > default
+  const agentFlagRaw = asString(a.flags.agent) ?? presetConfig?.preset.agent ?? "custom";
   const agentFlag: AgentKind =
     (agentFlagRaw === "claude" || agentFlagRaw === "codex" ||
         agentFlagRaw === "custom")
@@ -60,16 +75,30 @@ export const runCmd = async (argv: ReadonlyArray<string>) => {
   const agent: AgentKind | undefined = agentFlag === "custom"
     ? undefined
     : agentFlag;
-  const cmdOverride = asString(a.flags.cmd);
+
+  // Command override: CLI flag > preset
+  const cmdOverride = asString(a.flags.cmd) ?? presetConfig?.preset.cmd;
+
   const worktreeFlag = asString(a.flags.worktree);
   const sessionRef = asString(a.flags.session);
-  const worktreeNameDefault = "ai";
-  // Start point for new worktrees. This can be a branch name, tag, or commit SHA.
-  const startPoint = asString(a.flags.branch) ?? "HEAD";
+  const worktreeNameDefault = presetConfig?.preset.worktreePrefix
+    ? `${presetConfig.preset.worktreePrefix}-ai`
+    : "ai";
+
+  // Start point for new worktrees: CLI flag > preset > default
+  const startPoint = asString(a.flags.branch) ?? presetConfig?.preset.startPoint ?? "HEAD";
   const profileFlag = asString(a.flags.profile);
   const trace = boolFlag(a.flags.trace, false);
   const debug = boolFlag(a.flags.debug, false) || trace;
   const repo = await detectRepo(repoHint);
+
+  // Validate preset paths and warn if any don't exist
+  if (presetConfig) {
+    const warnings = await validatePresetPaths(presetConfig.preset);
+    for (const w of warnings) {
+      console.error(`macbox: WARNING: ${w}`);
+    }
+  }
 
   // Optional sessions: use saved defaults for this repo/worktree.
   let sessionRec: Awaited<ReturnType<typeof loadSessionById>> | null = null;
@@ -96,9 +125,9 @@ export const runCmd = async (argv: ReadonlyArray<string>) => {
     inferredLatest?.worktreeName ?? worktreeNameDefault;
   const wtPath = await worktreeDir(base, repo.root, worktreeName);
 
-  // Capabilities: session defaults, overridden by flags if present
-  const defaultNetwork = sessionRec?.caps.network ?? true;
-  const defaultExec = sessionRec?.caps.exec ?? true;
+  // Capabilities: session defaults, overridden by preset, overridden by flags
+  const defaultNetwork = sessionRec?.caps.network ?? presetConfig?.preset.capabilities?.network ?? true;
+  const defaultExec = sessionRec?.caps.exec ?? presetConfig?.preset.capabilities?.exec ?? true;
   const network =
     (a.flags["allow-network"] !== undefined ||
         a.flags["block-network"] !== undefined ||
@@ -130,6 +159,7 @@ export const runCmd = async (argv: ReadonlyArray<string>) => {
   const agentProfiles = defaultAgentProfiles(agentFlag);
   const profileNames = [
     ...agentProfiles,
+    ...(presetConfig?.preset.profiles ?? []),
     ...(sessionRec?.profiles ?? []),
     ...parseProfileNames(profileFlag),
   ];
@@ -140,12 +170,18 @@ export const runCmd = async (argv: ReadonlyArray<string>) => {
   const cliExtraRead = parsePathList(a.flags["allow-fs-read"]);
   const cliExtraWrite = parsePathList(a.flags["allow-fs-rw"]);
 
+  // Merge extra paths: preset > session > profiles > CLI
+  const presetExtraRead = (presetConfig?.preset.capabilities?.extraReadPaths ?? []).map(expandPath);
+  const presetExtraWrite = (presetConfig?.preset.capabilities?.extraWritePaths ?? []).map(expandPath);
+
   const mergedExtraRead = [
+    ...presetExtraRead,
     ...((sessionRec?.caps.extraRead ?? []) as ReadonlyArray<string>),
     ...(loadedProfiles?.extraReadPaths ?? []),
     ...cliExtraRead,
   ];
   const mergedExtraWrite = [
+    ...presetExtraWrite,
     ...((sessionRec?.caps.extraWrite ?? []) as ReadonlyArray<string>),
     ...(loadedProfiles?.extraWritePaths ?? []),
     ...cliExtraWrite,
@@ -200,6 +236,18 @@ export const runCmd = async (argv: ReadonlyArray<string>) => {
   env["MACBOX_SESSION"] = `${worktreeName}-${nowCompact()}`;
   env["MACBOX_WORKTREE"] = wtPath;
 
+  // Inject preset environment variables
+  if (presetConfig?.preset.env) {
+    for (const [k, v] of Object.entries(presetConfig.preset.env)) {
+      env[k] = v;
+    }
+  }
+
+  // Write agent config for model selection
+  if (presetConfig?.preset.model && agentFlag !== "custom") {
+    await writeAgentConfig(wtPath, agentFlag, presetConfig.preset.model);
+  }
+
   const session = env["MACBOX_SESSION"];
   const cmdLine = fullCmd.join(" ");
   const traceStart = new Date(Date.now() - 1500);
@@ -214,6 +262,8 @@ export const runCmd = async (argv: ReadonlyArray<string>) => {
       gitCommonDir: repo.gitCommonDir,
       gitDir: repo.gitDir,
       agent: agentFlag,
+      preset: presetConfig?.preset.name,
+      presetSource: presetConfig?.source,
       profiles: profileNames,
       caps: {
         network,

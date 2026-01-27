@@ -50,6 +50,10 @@ deno task dev -- shell --agent claude
 
 # run Codex in its own sandbox worktree
 deno task dev -- run --agent codex --worktree ai-codex -- --help
+
+# use a preset for a complete workflow configuration
+deno task dev -- run --preset fullstack-typescript -- --help
+deno task dev -- shell --preset python-ml
 ```
 
 Tips:
@@ -114,6 +118,9 @@ Use it when you want to launch an agent CLI (or any command) inside the sandbox.
 # Runs `claude ...` inside a sandboxed worktree
 macbox run --agent claude -- --help
 
+# Use a preset for a complete workflow configuration
+macbox run --preset fullstack-typescript -- --help
+
 # Custom command (if your agent executable isn't on PATH)
 macbox run --cmd /opt/homebrew/bin/claude --worktree ai1 -- --help
 ```
@@ -127,6 +134,9 @@ Same sandbox policy, but for **you**.
 ```bash
 # Warm shell: auto-applies agent profile, defaults worktree to ai-claude
 macbox shell --agent claude
+
+# Use a preset for a complete workflow configuration
+macbox shell --preset python-ml
 
 # Explicit shell command
 macbox shell --worktree ai -- /bin/zsh -l
@@ -281,7 +291,140 @@ macbox run --agent claude --profile my-toolchain -- --help
 
 ---
 
-## Debugging “Permission denied” with `--trace`
+## Presets (workflow templates)
+
+Presets are **higher-level templates** that bundle together:
+
+- agent type and model
+- profiles to compose
+- capability flags (network, exec, filesystem)
+- environment variables
+- worktree naming conventions
+
+Think of profiles as low-level building blocks, and presets as complete workflow configurations.
+
+### Listing & inspecting presets
+
+```bash
+macbox presets list
+macbox presets show fullstack-typescript
+```
+
+### Using a preset
+
+```bash
+# Run with a preset
+macbox run --preset fullstack-typescript -- --help
+
+# Shell with a preset
+macbox shell --preset python-ml
+
+# CLI flags always override preset defaults
+macbox run --preset fullstack-typescript --block-network -- --help
+macbox shell --preset rust-dev --profile host-ssh
+```
+
+### Bundled presets
+
+macbox ships with these presets:
+
+| Preset | Agent | Profiles | Environment | Use case |
+|--------|-------|----------|-------------|----------|
+| `fullstack-typescript` | claude | host-tools | NODE_ENV=development | Node.js, Deno, npm/pnpm/yarn |
+| `python-ml` | claude | host-tools | PYTHONDONTWRITEBYTECODE=1 | Python, pip, pyenv, virtualenvs |
+| `rust-dev` | claude | host-tools | RUST_BACKTRACE=1 | Cargo, rustup, Rust toolchain |
+
+### Creating your own preset
+
+```bash
+# Create from a template
+macbox presets create my-workflow --template fullstack-typescript
+
+# Create a blank preset
+macbox presets create my-workflow
+
+# Edit the preset
+macbox presets edit my-workflow
+```
+
+User presets are stored in `~/.config/macbox/presets/<name>.json`.
+
+### Preset schema
+
+```json
+{
+  "name": "my-workflow",
+  "description": "My custom development workflow",
+  "agent": "claude",
+  "model": "claude-sonnet-4-20250514",
+  "profiles": ["host-tools", "host-ssh"],
+  "capabilities": {
+    "network": true,
+    "exec": true,
+    "extraReadPaths": ["/opt/homebrew", "~/.nvm", "~/.deno"],
+    "extraWritePaths": []
+  },
+  "env": {
+    "NODE_ENV": "development",
+    "DEBUG": "true"
+  },
+  "worktreePrefix": "ai-myworkflow",
+  "startPoint": "main"
+}
+```
+
+Field reference:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Preset identifier |
+| `description` | string | Human-readable description |
+| `agent` | string | `claude`, `codex`, or `custom` |
+| `model` | string | Model ID (written to agent config in sandbox) |
+| `profiles` | array | Profile names to compose |
+| `capabilities.network` | boolean | Allow outbound network |
+| `capabilities.exec` | boolean | Allow subprocess execution |
+| `capabilities.extraReadPaths` | array | Additional read-only paths |
+| `capabilities.extraWritePaths` | array | Additional writable paths |
+| `env` | object | Environment variables to inject |
+| `worktreePrefix` | string | Default worktree name prefix |
+| `startPoint` | string | Default git ref for new worktrees |
+
+### How preset + CLI flags interact
+
+Precedence (highest to lowest):
+
+1. **CLI flags** (`--block-network`, `--profile`, etc.)
+2. **Session defaults** (from `--session`)
+3. **Preset defaults**
+4. **Hardcoded defaults**
+
+So you can use a preset as a baseline and override specific settings per-run.
+
+### Preset tracking in sessions
+
+When you use a preset, macbox records it in the session:
+
+```bash
+macbox run --preset fullstack-typescript -- --help
+macbox sessions show latest --repo .
+# Shows: "preset": "fullstack-typescript"
+```
+
+When you `attach` to that session, the preset is automatically reloaded.
+
+### Deleting presets
+
+```bash
+# Only user-created presets can be deleted
+macbox presets delete my-workflow
+```
+
+Bundled presets cannot be deleted (they ship with macbox).
+
+---
+
+## Debugging "Permission denied" with `--trace`
 
 Seatbelt denials usually go to the macOS unified log (not your process stderr).
 When you run with `--trace`, macbox:
@@ -556,6 +699,11 @@ boundary simple and portable.
 
 ---
 
-That’s it. If you want, the next ergonomic upgrade is: auto-writing the skills
-registry file on `shell --agent ...` and `run --agent ...` so agents always have
-a current `.macbox/skills/registry.json` to consult.
+## What's next?
+
+Now that you know the basics:
+
+- **Try a preset**: `macbox shell --preset fullstack-typescript` gives you a
+  complete TypeScript development environment
+- **Create your own preset**: `macbox presets create my-workflow --template fullstack-typescript`
+- **Build skills**: Define repeatable sandbox tools your agents can use

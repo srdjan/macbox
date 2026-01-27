@@ -16,6 +16,7 @@ import {
   type SessionRecord,
 } from "./sessions.ts";
 import { detectRepo, ensureWorktree } from "./git.ts";
+import { loadPreset, type LoadedPreset, writeAgentConfig } from "./presets.ts";
 
 const asString = (v: string | boolean | undefined): string | undefined =>
   v === undefined
@@ -79,6 +80,16 @@ export const attachCmd = async (argv: ReadonlyArray<string>) => {
   const session = await loadSessionForAttach(base, idRef);
   const agent: AgentKind | undefined = session.agent;
 
+  // Load preset from session if present
+  let presetConfig: LoadedPreset | null = null;
+  if (session.preset) {
+    try {
+      presetConfig = await loadPreset(session.preset);
+    } catch {
+      console.error(`macbox: WARNING: could not load preset '${session.preset}' from session`);
+    }
+  }
+
   // Repo info (for git dirs; re-detect to be safe)
   const repo = await detectRepo(repoHint ?? session.repoRoot);
 
@@ -102,6 +113,7 @@ export const attachCmd = async (argv: ReadonlyArray<string>) => {
   const agentProfiles = agent ? defaultAgentProfiles(agent) : [];
   const profileNames = [
     ...agentProfiles,
+    ...(presetConfig?.preset.profiles ?? []),
     ...session.profiles,
     ...parseProfileNames(profileFlag),
   ];
@@ -173,6 +185,18 @@ export const attachCmd = async (argv: ReadonlyArray<string>) => {
   env["MACBOX_SESSION_ID"] = session.id;
   env["MACBOX_WORKTREE"] = session.worktreePath;
 
+  // Inject preset environment variables
+  if (presetConfig?.preset.env) {
+    for (const [k, v] of Object.entries(presetConfig.preset.env)) {
+      env[k] = v;
+    }
+  }
+
+  // Write agent config for model selection
+  if (presetConfig?.preset.model && agent && agent !== "custom") {
+    await writeAgentConfig(session.worktreePath, agent, presetConfig.preset.model);
+  }
+
   const cmdLine = cmd.join(" ");
   const traceStart = new Date(Date.now() - 1500);
 
@@ -185,6 +209,8 @@ export const attachCmd = async (argv: ReadonlyArray<string>) => {
     gitCommonDir: repo.gitCommonDir,
     gitDir: repo.gitDir,
     agent,
+    preset: session.preset,
+    presetSource: session.presetSource,
     profiles: profileNames,
     caps: {
       network,
