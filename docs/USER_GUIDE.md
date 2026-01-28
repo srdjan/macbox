@@ -59,6 +59,15 @@ deno task dev -- run --agent codex --worktree ai-codex -- --help
 # use a preset for a complete workflow configuration
 deno task dev -- run --preset fullstack-typescript -- --help
 deno task dev -- shell --preset python-ml
+
+# create a managed workspace linked to a GitHub issue
+deno task dev -- workspace new --agent claude --issue 42
+
+# run a flow defined in macbox.json
+deno task dev -- flow run build
+
+# swarm: create 3 workspaces and run a flow on each
+deno task dev -- swarm new --count 3 --agent claude --flow build
 ```
 
 Tips:
