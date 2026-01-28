@@ -47,6 +47,31 @@ Usage:
   macbox presets edit <name>
   macbox presets delete <name>
 
+  macbox project add [--name <alias>] [--repo <path>] [--agent claude|codex] [--preset <name>]
+  macbox project list
+  macbox project show <name>
+  macbox project remove <name>
+
+  macbox workspace new [--issue N] [--name <label>] [--preset <name>] [--agent claude|codex]
+                       [--branch <start-point>] [--worktree <name>] [--repo <path>] [--base <path>]
+  macbox workspace list [--all] [--archived] [--repo <path>] [--base <path>]
+  macbox workspace show <id> [--base <path>]
+  macbox workspace open <id> [--base <path>]
+  macbox workspace archive <id> [--base <path>]
+  macbox workspace restore <id> [--base <path>]
+
+  macbox flow run <name> [--workspace <id>] [--worktree <name>] [--json] [--debug] [--repo <path>] [--base <path>]
+  macbox flow list [--worktree <name>] [--repo <path>] [--base <path>]
+  macbox flow show <name> [--worktree <name>] [--repo <path>] [--base <path>]
+
+  macbox context pack [--workspace <id>] [--worktree <name>] [--summary <text>] [--repo <path>] [--base <path>]
+  macbox context show <packId> [--workspace <id>] [--worktree <name>] [--repo <path>] [--base <path>]
+  macbox context list [--workspace <id>] [--worktree <name>] [--repo <path>] [--base <path>]
+
+  macbox swarm run --flow <name> --workspaces <id1,id2,...> [--max-parallel N] [--json] [--debug] [--repo <path>] [--base <path>]
+  macbox swarm new --count N [--issue N] [--flow <name>] [--preset <name>] [--agent claude|codex]
+                   [--repo <path>] [--base <path>]
+
 Notes:
   • Sessions are persisted under: <base>/sessions/<repoId>/<worktree>.json
     Use 'macbox attach <id>' to re-open a saved sandbox with the same defaults.
@@ -68,6 +93,19 @@ Notes:
   - Creates worktrees under: <base>/worktrees/<repoId>/<worktree>
   - Agent HOME/caches/tmp live under: <worktree>/.macbox/
 
+  - Projects register repos for multi-repo awareness.
+    Registry lives at: ~/.config/macbox/projects.json
+  - Workspaces wrap a (project, worktree, session) into a managed lifecycle.
+    Use 'macbox workspace new' to create, 'macbox workspace archive' to freeze.
+    Workspaces live under: <base>/workspaces/<projectId>/<workspaceId>.json
+    Alias: 'macbox ws' is shorthand for 'macbox workspace'.
+  - Flows are named step sequences defined in macbox.json at the repo root.
+    Steps can be built-in (steps:shell, steps:git.*), skill-backed (skills:<name>),
+    or agent-backed (steps:agent.run). Flow results are saved to .macbox/flows/.
+  - Swarm runs a flow across multiple workspaces in parallel with configurable concurrency.
+    Use 'macbox swarm new' to create N workspaces and optionally run a flow on each.
+    Use 'macbox swarm run' to run a flow across existing workspaces.
+
 Examples:
   deno run -A src/main.ts run --agent claude -- --help
   deno run -A src/main.ts run --agent claude --trace -- --help
@@ -86,6 +124,13 @@ Examples:
   deno run -A src/main.ts skills init fmt --worktree ai
   deno run -A src/main.ts skills run fmt --worktree ai -- --help
   deno run -A src/main.ts clean --worktree ai
+  deno run -A src/main.ts project add
+  deno run -A src/main.ts project list
+  deno run -A src/main.ts workspace new --agent claude --issue 42
+  deno run -A src/main.ts workspace list
+  deno run -A src/main.ts ws list --archived
+  deno run -A src/main.ts swarm new --count 3 --agent claude --issue 42 --flow build
+  deno run -A src/main.ts swarm run --flow test --workspaces ws-abc123,ws-def456
 
 `;
   console.log(s.trim());

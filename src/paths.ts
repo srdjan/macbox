@@ -48,3 +48,27 @@ export const sessionFileFor = async (baseDir: string, repoRoot: string, worktree
   const dir = await sessionDirForRepo(baseDir, repoRoot);
   return pathJoin(dir, `${worktreeName}.json`);
 };
+
+// --- Config directory (user config, not state) ---
+
+export const configDir = () => {
+  const home = Deno.env.get("HOME") ?? "";
+  return pathJoin(home, ".config", "macbox");
+};
+
+export const projectRegistryPath = () => pathJoin(configDir(), "projects.json");
+
+// --- Workspace paths ---
+
+export const workspacesDir = (baseDir: string) => pathJoin(baseDir, "workspaces");
+
+export const workspaceDirForProject = (baseDir: string, projectId: string) =>
+  pathJoin(baseDir, "workspaces", projectId);
+
+export const workspaceFileFor = (baseDir: string, projectId: string, workspaceId: string) =>
+  pathJoin(baseDir, "workspaces", projectId, `${workspaceId}.json`);
+
+// --- Flow result paths ---
+
+export const flowResultsDir = (worktreePath: string) =>
+  pathJoin(macboxDir(worktreePath), "flows");

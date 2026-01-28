@@ -1,14 +1,19 @@
 # macbox user guide
 
-macbox gives you a **native macOS sandbox** for running coding agents (Claude
-Code, Codex, or any CLI) against a **git worktree**.
+macbox gives you a **native macOS sandbox workbench** for running coding agents
+(Claude Code, Codex, or any CLI) against **git worktrees**.
 
-It’s meant to feel like “let the agent do real work” while still keeping your
+It's meant to feel like "let the agent do real work" while still keeping your
 laptop sane:
 
 - the agent can install deps, run builds, spawn subprocesses, and (by default)
   use the network
 - but it can only **write** inside the worktree + its sandbox home (`.macbox/`)
+
+Beyond sandboxing, macbox provides a complete workspace lifecycle: projects
+that track multiple repos, workspaces with archive/restore, composable flows
+defined in `macbox.json`, context packs for reproducible state snapshots, and
+swarm execution for running flows across multiple workspaces in parallel.
 
 ---
 
@@ -80,21 +85,32 @@ macbox keeps everything it owns under a single **base directory** (default:
 
 Inside that base directory:
 
-| Path                                       | What it is                                                    | Safe to delete? |
-| ------------------------------------------ | ------------------------------------------------------------- | --------------- |
-| `<base>/worktrees/<repoId>/<worktree>`     | The actual git worktree directory where the agent edits files | Yes             |
-| `<base>/sessions/<repoId>/<worktree>.json` | Saved defaults (agent kind, profiles, caps)                   | Yes             |
+| Path                                                    | What it is                                                    | Safe to delete? |
+| ------------------------------------------------------- | ------------------------------------------------------------- | --------------- |
+| `<base>/worktrees/<repoId>/<worktree>`                  | The actual git worktree directory where the agent edits files | Yes             |
+| `<base>/sessions/<repoId>/<worktree>.json`              | Saved defaults (agent kind, profiles, caps)                   | Yes             |
+| `<base>/workspaces/<projectId>/<workspaceId>.json`      | Workspace records (lifecycle, flow history, context packs)    | Yes             |
+
+macbox also uses a config directory (default: `~/.config/macbox`):
+
+| Path                                     | What it is                  |
+| ---------------------------------------- | --------------------------- |
+| `~/.config/macbox/projects.json`         | Project registry            |
+| `~/.config/macbox/profiles/<name>.json`  | User profiles               |
+| `~/.config/macbox/presets/<name>.json`    | User presets                |
 
 Inside each worktree, macbox creates a `.macbox/` folder:
 
-| Path                            | Purpose                                   |
-| ------------------------------- | ----------------------------------------- |
-| `<worktree>/.macbox/home`       | Sandbox `HOME`                            |
-| `<worktree>/.macbox/cache`      | XDG caches                                |
-| `<worktree>/.macbox/tmp`        | Sandbox temp                              |
-| `<worktree>/.macbox/logs`       | `--trace` output                          |
-| `<worktree>/.macbox/profile.sb` | Generated Seatbelt policy                 |
-| `<worktree>/.macbox/skills`     | Local-only skills + registry (gitignored) |
+| Path                                         | Purpose                                   |
+| -------------------------------------------- | ----------------------------------------- |
+| `<worktree>/.macbox/home`                    | Sandbox `HOME`                            |
+| `<worktree>/.macbox/cache`                   | XDG caches                                |
+| `<worktree>/.macbox/tmp`                     | Sandbox temp                              |
+| `<worktree>/.macbox/logs`                    | `--trace` output                          |
+| `<worktree>/.macbox/profile.sb`              | Generated Seatbelt policy                 |
+| `<worktree>/.macbox/skills`                  | Local-only skills + registry (gitignored) |
+| `<worktree>/.macbox/flows`                   | Flow execution results (JSON)             |
+| `<worktree>/.macbox/context/packs/<packId>/` | Context pack snapshots                    |
 
 That `.macbox/` folder is **gitignored** in the worktree.
 
@@ -648,6 +664,313 @@ You’ll get a single envelope like:
 
 ---
 
+## Projects (multi-repo awareness)
+
+Projects register repos so macbox can track workspaces across multiple
+repositories. Each project is identified by a hash of its repo path (the same
+`repoId` used internally by sessions).
+
+```bash
+# Register the current repo
+macbox project add
+
+# Register with options
+macbox project add --name my-app --repo /path/to/repo --agent claude
+
+# List and inspect
+macbox project list
+macbox project show my-app
+
+# Remove from registry
+macbox project remove my-app
+```
+
+Projects are stored in `~/.config/macbox/projects.json`. If you run
+`macbox workspace new` without a registered project, macbox auto-creates one.
+
+---
+
+## Workspaces (managed lifecycle)
+
+Workspaces sit above sessions: they track a (project, worktree, session) triple
+with a lifecycle you control. Each workspace has a status (`active` or
+`archived`), optional issue/branch linkage, and records flow runs and context
+packs over time.
+
+Existing `macbox run/shell/attach` commands work exactly as before. Workspaces
+are opt-in - you adopt them when you need lifecycle management.
+
+### Creating a workspace
+
+```bash
+# Basic workspace
+macbox workspace new --agent claude
+
+# Link to an issue (worktree auto-named ws-issue-42)
+macbox workspace new --agent claude --issue 42
+
+# With preset and custom label
+macbox workspace new --preset fullstack-typescript --name auth-refactor
+
+# Explicit branch and worktree name
+macbox workspace new --agent claude --branch feature/login --worktree ws-login
+```
+
+Workspace creation does all the plumbing: detects the repo, finds or creates a
+project entry, creates a git worktree, sets up sandbox directories, saves a
+session record, and creates the workspace file. If `macbox.json` defines an
+`onWorkspaceCreate` hook, it runs automatically.
+
+### Listing and inspecting
+
+```bash
+macbox workspace list                 # active workspaces, current repo
+macbox workspace list --archived      # archived only
+macbox workspace list --all           # everything
+macbox workspace show <id>            # full workspace details
+```
+
+`macbox ws` is a shorthand alias for `macbox workspace`.
+
+### Opening a workspace
+
+```bash
+macbox workspace open <id>
+```
+
+This loads the workspace's session and attaches to it (same as
+`macbox attach` but resolved by workspace ID).
+
+### Archive and restore
+
+Archiving freezes a workspace. Restoring brings it back.
+
+```bash
+# Archive (marks as archived, creates a context pack)
+macbox workspace archive <id>
+
+# Archive and evict the worktree from disk
+# (keeps the git branch and all metadata; saves disk space)
+macbox workspace archive <id> --evict
+
+# Restore (re-creates worktree if evicted, runs onWorkspaceRestore hook)
+macbox workspace restore <id>
+```
+
+The eviction model: when you `--evict`, macbox captures a context pack of the
+current state, records the branch pointer, removes the worktree directory, and
+marks `worktreeEvicted: true` in the archive record. When you restore, macbox
+re-creates the worktree from the saved branch and runs any configured hooks.
+
+---
+
+## Flows (composable step pipelines)
+
+A flow is to the agent what a CI pipeline is to your repo - except it runs
+locally, inside the sandbox.
+
+Flows are named step sequences defined in `macbox.json` at the repo or
+worktree root. Steps execute sequentially. A non-zero exit code halts the
+flow unless `continueOnError: true` is set on that step.
+
+### `macbox.json` example
+
+```json
+{
+  "schema": "macbox.config.v1",
+  "defaults": {
+    "agent": "claude",
+    "profiles": ["host-tools"]
+  },
+  "flows": {
+    "build": {
+      "description": "Install, build, and test",
+      "steps": [
+        { "id": "install", "type": "steps:shell", "args": { "cmd": "npm install" } },
+        { "id": "build", "type": "steps:shell", "args": { "cmd": "npm run build" } },
+        { "id": "test", "type": "steps:shell", "args": { "cmd": "npm test" }, "continueOnError": true }
+      ]
+    },
+    "merge-main": {
+      "description": "Fetch and attempt merge from main",
+      "steps": [
+        { "id": "fetch", "type": "steps:git.fetch" },
+        { "id": "merge", "type": "steps:git.merge", "args": { "branch": "origin/main" } },
+        { "id": "conflicts", "type": "steps:git.conflictList" }
+      ]
+    },
+    "pr-submit": {
+      "description": "Commit, push, and create PR",
+      "steps": [
+        { "id": "add", "type": "steps:git.add" },
+        { "id": "commit", "type": "steps:git.commit", "args": { "message": "Automated commit" } },
+        { "id": "pr", "type": "steps:gh.prCreate", "args": { "title": "Feature PR", "body": "Automated" } }
+      ]
+    }
+  },
+  "hooks": {
+    "onWorkspaceCreate": [
+      { "id": "deps", "type": "steps:shell", "args": { "cmd": "npm install" } }
+    ],
+    "onWorkspaceRestore": [
+      { "id": "deps", "type": "steps:shell", "args": { "cmd": "npm install" } }
+    ]
+  }
+}
+```
+
+### Built-in step types
+
+**Shell:**
+
+- `steps:shell` - runs a bash command. Args: `cmd` (string).
+
+**Git operations:**
+
+- `steps:git.diff` - shows working tree diff
+- `steps:git.status` - porcelain status output
+- `steps:git.checkout` - checkout a branch. Args: `branch` (string).
+- `steps:git.pull` - pull from remote
+- `steps:git.commit` - commit. Args: `message` (string), optional `all` (boolean) to stage everything first.
+- `steps:git.fetch` - fetch from remote
+- `steps:git.merge` - merge a branch. Args: `branch` (string).
+- `steps:git.conflictList` - list conflicted files
+- `steps:git.add` - stage files. Optional args: `files` (string array). Defaults to `git add -A`.
+
+**Agent:**
+
+- `steps:agent.run` - launches the configured agent inside the sandbox. Optional args: `passthrough` (string array) for extra CLI flags.
+
+**GitHub (requires `gh` CLI):**
+
+- `steps:gh.issueGet` - fetch issue details. Args: `number` (integer).
+- `steps:gh.prGet` - fetch PR details. Args: `number` (integer).
+- `steps:gh.prCreate` - create a PR. Args: `title` (string), optional `body`, `base`, `head`.
+- `steps:gh.prMerge` - merge a PR. Args: `number` (integer), optional `method` (merge/squash/rebase).
+
+**Skills:**
+
+- `skills:<name>` - runs a named skill. Optional args: `skillArgs` (string array).
+
+### Running flows
+
+```bash
+# Run a flow
+macbox flow run build
+
+# Run in a specific workspace (updates the workspace's flowsRun history)
+macbox flow run build --workspace ws-abc123
+
+# JSON output
+macbox flow run build --json
+
+# List flows defined in macbox.json
+macbox flow list
+
+# Show a flow's definition
+macbox flow show build
+```
+
+Flow results are saved to `<worktree>/.macbox/flows/<flowName>-<timestamp>.json`
+with schema `macbox.flow.result.v1`, containing the flow name, per-step results,
+overall success/failure, and timing data.
+
+### Hooks
+
+Hooks are arrays of steps that run at workspace lifecycle points. They use the
+same step types as flows:
+
+- `onWorkspaceCreate` - runs after `macbox workspace new`
+- `onWorkspaceRestore` - runs after `macbox workspace restore`
+- `onFlowComplete` - runs after any flow finishes
+
+---
+
+## Context packs (state snapshots)
+
+A context pack is a reproducible snapshot of the repo state at a specific
+moment. It captures everything an agent needs to understand where things stand:
+the current branch, commit SHA, dirty status, modified file list, the full
+diff, and recent git log.
+
+Context packs are useful for:
+
+- bookmarking state before archiving a workspace
+- handing off context between agents
+- recording what the repo looked like when a flow ran
+
+### Creating and using packs
+
+```bash
+# Snapshot the current worktree
+macbox context pack
+
+# For a specific workspace
+macbox context pack --workspace ws-abc123
+
+# With a custom summary
+macbox context pack --summary "Pre-merge state for issue #42"
+
+# List packs (most recent first)
+macbox context list
+
+# Inspect a pack
+macbox context show <packId>
+```
+
+### What's in a pack
+
+Packs live under `<worktree>/.macbox/context/packs/<packId>/`:
+
+| File | Contents |
+|------|----------|
+| `pack.json` | Metadata: packId, workspaceId, timestamp, repo state |
+| `repo_state.json` | Branch, commit SHA, dirty flag, modified files list, untracked count |
+| `diff.patch` | Full `git diff` output |
+| `summary.md` | Human-readable summary |
+| `notes.md` | Free-form notes (initially empty, edit as needed) |
+| `commands.log` | Recent git log (last 10 commits) |
+
+---
+
+## Swarm (parallel execution)
+
+Swarm runs a flow across multiple workspaces concurrently. This is useful when
+you want to apply the same operation (build, test, lint) to several feature
+branches at once, or when creating a batch of workspaces for parallel agent work.
+
+### Running a swarm
+
+```bash
+# Run a flow across specified workspaces
+macbox swarm run --flow build --workspaces ws-abc123,ws-def456,ws-ghi789
+
+# Limit concurrency (default: 3)
+macbox swarm run --flow test --workspaces ws-abc123,ws-def456 --max-parallel 2
+
+# JSON output
+macbox swarm run --flow build --workspaces ws-abc123,ws-def456 --json
+```
+
+### Creating workspace batches
+
+```bash
+# Create 3 workspaces
+macbox swarm new --count 3 --agent claude
+
+# Create 3 workspaces linked to an issue, then run a flow on each
+macbox swarm new --count 3 --agent claude --issue 42 --flow build
+
+# With a preset
+macbox swarm new --count 5 --preset fullstack-typescript --flow test
+```
+
+`macbox swarm new` creates the specified number of workspaces (each with its
+own git worktree and session), then optionally runs a flow on all of them in
+parallel. The maximum count per invocation is 20.
+
+---
+
 ## Troubleshooting & FAQ
 
 ### “sandbox-exec: No such file or directory”
@@ -707,3 +1030,10 @@ Now that you know the basics:
   complete TypeScript development environment
 - **Create your own preset**: `macbox presets create my-workflow --template fullstack-typescript`
 - **Build skills**: Define repeatable sandbox tools your agents can use
+- **Use workspaces**: `macbox workspace new --agent claude --issue 42` to create
+  a managed workspace linked to a GitHub issue
+- **Define flows**: Add a `macbox.json` to your repo root with build/test/deploy
+  step sequences
+- **Capture context**: `macbox context pack` before archiving to preserve state
+- **Run in parallel**: `macbox swarm new --count 3 --flow build` to spin up
+  multiple workspaces and run flows across them
