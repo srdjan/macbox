@@ -5,10 +5,11 @@ import { ensureDir, ensureGitignoreInmacbox } from "./fs.ts";
 import { writeSeatbeltProfile } from "./seatbelt.ts";
 import { detectSandboxExec, runSandboxed } from "./sandbox_exec.ts";
 import { sandboxEnv } from "./env.ts";
+import { augmentPathForHostTools } from "./host_tools_path.ts";
 import { type AgentKind, defaultAgentProfiles } from "./agent.ts";
 import { formatLogShowTime, nowCompact } from "./os.ts";
 import { collectSandboxViolations } from "./sandbox_trace.ts";
-import { loadProfiles, parseProfileNames } from "./profiles.ts";
+import { loadProfilesOptional, parseProfileNames } from "./profiles.ts";
 import {
   findLatestSession,
   loadSessionById,
@@ -132,9 +133,15 @@ export const shellCmd = async (argv: ReadonlyArray<string>) => {
     ...(sessionRec?.profiles ?? []),
     ...parseProfileNames(profileFlag),
   ];
+  const optionalProfiles = new Set(agentProfiles);
   const loadedProfiles = profileNames.length
-    ? await loadProfiles(wtPath, profileNames)
+    ? await loadProfilesOptional(wtPath, profileNames, optionalProfiles)
     : null;
+  if (loadedProfiles?.warnings?.length) {
+    for (const w of loadedProfiles.warnings) {
+      console.error(`macbox: WARNING: ${w}`);
+    }
+  }
 
   const cliExtraRead = parsePathList(a.flags["allow-fs-read"]);
   const cliExtraWrite = parsePathList(a.flags["allow-fs-rw"]);
@@ -196,6 +203,7 @@ export const shellCmd = async (argv: ReadonlyArray<string>) => {
       env[k] = v;
     }
   }
+  await augmentPathForHostTools(env, profileNames, Deno.env.get("HOME") ?? "");
 
   // Write agent config for model selection
   if (presetConfig?.preset.model && agent && agent !== "custom") {

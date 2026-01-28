@@ -3,6 +3,15 @@ export const printHelp = () => {
 macbox — run AI agents in a native macOS sandbox (Seatbelt) using git worktrees
 
 Usage:
+  macbox start [--agent claude|codex] [--preset <name>] [--profile <name[,name2...]>]
+               [--allow-network|--block-network] [--allow-exec|--block-exec]
+               [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>] [--debug] [--trace]
+               [--repo <path>] [--base <path>] -- <agent args...>
+
+  # Aliases
+  macbox claude
+  macbox codex
+
   macbox run   [--agent claude|codex] [--cmd <path>] [--worktree <name>] [--branch <branch>]
                [--preset <name>] [--profile <name[,name2...]>]
                [--allow-network|--block-network] [--allow-exec|--block-exec]
@@ -99,6 +108,9 @@ Notes:
     Steps can be built-in (steps:shell, steps:git.*), skill-backed (skills:<name>),
     or agent-backed (steps:agent.run). Flow results are saved to .macbox/flows/.
 Examples:
+  macbox start
+  macbox claude
+  macbox start --preset fullstack-typescript
   deno run -A src/main.ts run --agent claude -- --help
   deno run -A src/main.ts run --agent claude --trace -- --help
   deno run -A src/main.ts run --agent claude --profile host-tools -- --help

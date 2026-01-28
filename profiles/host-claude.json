@@ -1,0 +1,9 @@
+{
+  "name": "host-claude",
+  "description": "Read-only access to host Claude CLI install (for ~/.local/bin and NVM Node). Includes Mach lookup for system services.",
+  "read_paths": [
+    "~/.local/bin",
+    "~/.nvm"
+  ],
+  "mach_lookup": true
+}

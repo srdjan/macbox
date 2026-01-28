@@ -9,10 +9,11 @@ import {
   runSandboxedCapture,
 } from "./sandbox_exec.ts";
 import { sandboxEnv } from "./env.ts";
+import { augmentPathForHostTools } from "./host_tools_path.ts";
 import { type AgentKind, defaultAgentProfiles } from "./agent.ts";
 import { formatLogShowTime, nowCompact } from "./os.ts";
 import { collectSandboxViolations } from "./sandbox_trace.ts";
-import { loadProfiles, parseProfileNames } from "./profiles.ts";
+import { loadProfilesOptional, parseProfileNames } from "./profiles.ts";
 import {
   findLatestSession,
   loadSessionById,
@@ -352,9 +353,15 @@ export const skillsCmd = async (argv: ReadonlyArray<string>) => {
       ...(sessionRec?.profiles ?? []),
       ...parseProfileNames(profileFlag),
     ];
+    const optionalProfiles = new Set(agentProfiles);
     const loadedProfiles = profileNames.length
-      ? await loadProfiles(wtPath, profileNames)
+      ? await loadProfilesOptional(wtPath, profileNames, optionalProfiles)
       : null;
+    if (loadedProfiles?.warnings?.length) {
+      for (const w of loadedProfiles.warnings) {
+        console.error(`macbox: WARNING: ${w}`);
+      }
+    }
 
     // Capabilities (session defaults, overridden by flags)
     const defaultNetwork = sessionRec?.caps.network ?? true;
@@ -443,6 +450,7 @@ export const skillsCmd = async (argv: ReadonlyArray<string>) => {
 
     // Expand env from manifest
     for (const [k, v] of Object.entries(expanded.env)) env[k] = v;
+    await augmentPathForHostTools(env, profileNames, Deno.env.get("HOME") ?? "");
 
     const cmdLine = cmd.join(" ");
     const traceStart = new Date(Date.now() - 1500);

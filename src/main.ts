@@ -12,6 +12,7 @@ import { projectCmd } from "./project_cmd.ts";
 import { workspaceCmd } from "./workspace_cmd.ts";
 import { flowCmd } from "./flow_cmd.ts";
 import { contextCmd } from "./context_cmd.ts";
+import { startCmd } from "./start.ts";
 import { printHelp } from "./usage.ts";
 
 export type Exit = { readonly code: number };
@@ -19,12 +20,13 @@ export type Exit = { readonly code: number };
 const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   const top = parseArgs(argv);
 
-  if (top.flags.help || top._.length === 0) {
+  if (top.flags.help || argv.length === 0) {
     printHelp();
     return { code: 0 };
   }
 
-  const [cmd, ...rest] = top._;
+  const cmd = argv[0];
+  const rest = argv.slice(1);
 
   switch (cmd) {
     case "run":
@@ -52,6 +54,12 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
       return await flowCmd(rest);
     case "context":
       return await contextCmd(rest);
+    case "start":
+      return await startCmd(rest);
+    case "claude":
+      return await startCmd(["--agent", "claude", ...rest]);
+    case "codex":
+      return await startCmd(["--agent", "codex", ...rest]);
     case "help":
     default:
       printHelp();

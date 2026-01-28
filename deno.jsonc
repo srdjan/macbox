@@ -7,9 +7,9 @@
     "fmt": "deno fmt",
     "lint": "deno lint",
     "test": "deno test -A",
-    "compile:mac": "mkdir -p dist && deno compile --allow-read --allow-write --allow-run --allow-env=HOME,XDG_CONFIG_HOME,MACBOX_PROFILES_DIR,MACBOX_PRESETS_DIR,EDITOR,VISUAL --output dist/macbox src/main.ts",
-    "compile:mac-arm": "mkdir -p dist && deno compile --allow-read --allow-write --allow-run --allow-env=HOME,XDG_CONFIG_HOME,MACBOX_PROFILES_DIR,MACBOX_PRESETS_DIR,EDITOR,VISUAL --output dist/macbox-aarch64 --target aarch64-apple-darwin src/main.ts",
-    "compile:mac-x64": "mkdir -p dist && deno compile --allow-read --allow-write --allow-run --allow-env=HOME,XDG_CONFIG_HOME,MACBOX_PROFILES_DIR,MACBOX_PRESETS_DIR,EDITOR,VISUAL --output dist/macbox-x86_64 --target x86_64-apple-darwin src/main.ts",
+    "compile:mac": "mkdir -p dist && deno compile --allow-read --allow-write --allow-run --allow-env=HOME,SHELL,XDG_CONFIG_HOME,MACBOX_PROFILES_DIR,MACBOX_PRESETS_DIR,EDITOR,VISUAL --output dist/macbox src/main.ts",
+    "compile:mac-arm": "mkdir -p dist && deno compile --allow-read --allow-write --allow-run --allow-env=HOME,SHELL,XDG_CONFIG_HOME,MACBOX_PROFILES_DIR,MACBOX_PRESETS_DIR,EDITOR,VISUAL --output dist/macbox-aarch64 --target aarch64-apple-darwin src/main.ts",
+    "compile:mac-x64": "mkdir -p dist && deno compile --allow-read --allow-write --allow-run --allow-env=HOME,SHELL,XDG_CONFIG_HOME,MACBOX_PROFILES_DIR,MACBOX_PRESETS_DIR,EDITOR,VISUAL --output dist/macbox-x86_64 --target x86_64-apple-darwin src/main.ts",
     "compile:mac-universal": "deno task compile:mac-arm && deno task compile:mac-x64 && lipo -create -output dist/macbox dist/macbox-aarch64 dist/macbox-x86_64"
   }
 }

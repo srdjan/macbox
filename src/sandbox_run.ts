@@ -6,8 +6,9 @@ import {
   type SandboxCaptured,
 } from "./sandbox_exec.ts";
 import { sandboxEnv } from "./env.ts";
+import { augmentPathForHostTools } from "./host_tools_path.ts";
 import { ensureDir, ensureGitignoreInmacbox } from "./fs.ts";
-import { loadProfiles } from "./profiles.ts";
+import { loadProfilesOptional } from "./profiles.ts";
 import { expandPath } from "./presets.ts";
 import type { AgentKind } from "./agent.ts";
 import { defaultAgentProfiles } from "./agent.ts";
@@ -50,9 +51,15 @@ export const executeSandboxRun = async (
   // Load profiles
   const agentProfiles = req.agent ? defaultAgentProfiles(req.agent) : [];
   const profileNames = [...agentProfiles, ...(req.profiles ?? [])];
+  const optionalProfiles = new Set(agentProfiles);
   const loadedProfiles = profileNames.length
-    ? await loadProfiles(wtPath, profileNames)
+    ? await loadProfilesOptional(wtPath, profileNames, optionalProfiles)
     : null;
+  if (loadedProfiles?.warnings?.length) {
+    for (const w of loadedProfiles.warnings) {
+      console.error(`macbox: WARNING: ${w}`);
+    }
+  }
 
   // Merge capabilities
   const network = req.caps?.network ?? true;
@@ -92,6 +99,7 @@ export const executeSandboxRun = async (
       env[k] = v;
     }
   }
+  await augmentPathForHostTools(env, profileNames, Deno.env.get("HOME") ?? "");
 
   const sx = await detectSandboxExec();
   const params = {

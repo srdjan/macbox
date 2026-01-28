@@ -18,6 +18,10 @@ export type LoadedProfiles = {
   readonly sources: ReadonlyArray<{ readonly name: string; readonly path: string }>;
 };
 
+export type LoadedProfilesWithWarnings = LoadedProfiles & {
+  readonly warnings: ReadonlyArray<string>;
+};
+
 const trim = (s: string) => s.trim();
 
 export const parseProfileNames = (v: string | undefined): ReadonlyArray<string> => {
@@ -202,6 +206,68 @@ export const loadProfiles = async (
     allowMachLookupAll,
     machServices: [...machSet.values()].sort((a, b) => a.localeCompare(b)),
     sources,
+  };
+};
+
+export const loadProfilesOptional = async (
+  worktree: string,
+  names: ReadonlyArray<string>,
+  optionalNames: ReadonlySet<string>,
+): Promise<LoadedProfilesWithWarnings> => {
+  const profiles: Profile[] = [];
+  const sources: { name: string; path: string }[] = [];
+
+  const readSet = new Set<string>();
+  const writeSet = new Set<string>();
+  let allowMachLookupAll = false;
+  const machSet = new Set<string>();
+  const warnings: string[] = [];
+
+  for (const n of names) {
+    const candidates = resolveProfileFile(n);
+    let loaded: { raw: unknown; path: string } | null = null;
+    for (const p of candidates) {
+      const raw = await tryReadJsonFile(p);
+      if (raw !== null) {
+        loaded = { raw, path: p };
+        break;
+      }
+    }
+    if (!loaded) {
+      if (optionalNames.has(n)) {
+        warnings.push(`optional profile not found: ${n} (searched: ${candidates.join(", ")})`);
+        continue;
+      }
+      throw new Error(`Profile not found: ${n} (searched: ${candidates.join(", ")})`);
+    }
+    const prof = validateProfile(loaded.raw, n);
+    profiles.push(prof);
+    sources.push({ name: prof.name, path: loaded.path });
+
+    for (const rp of prof.read_paths ?? []) {
+      const ap = toAbsPath(worktree, rp);
+      readSet.add(ap);
+    }
+    for (const wp of prof.write_paths ?? []) {
+      const ap = toAbsPath(worktree, wp);
+      writeSet.add(ap);
+    }
+
+    if (prof.mach_lookup === true) {
+      allowMachLookupAll = true;
+    } else if (Array.isArray(prof.mach_lookup)) {
+      for (const s of prof.mach_lookup) machSet.add(s);
+    }
+  }
+
+  return {
+    profiles,
+    extraReadPaths: [...readSet.values()],
+    extraWritePaths: [...writeSet.values()],
+    allowMachLookupAll,
+    machServices: [...machSet.values()].sort((a, b) => a.localeCompare(b)),
+    sources,
+    warnings,
   };
 };
 

@@ -68,10 +68,24 @@ ${dbg}(deny default)
 ;; Process operations
 ${proc}(allow signal)
 
+;; Allow common sysctl reads (needed by standard libs)
+(allow sysctl-read)
+
+;; Allow terminal ioctl operations (e.g., raw mode)
+(allow file-ioctl
+  (subpath "/dev")
+)
+
+;; Allow Notification Center shared memory reads (used by system networking stack)
+(allow ipc-posix-shm-read-data
+  (ipc-posix-name "apple.shm.notification_center")
+)
+
 ;; Mach services (IPC)
 ${mach}
 ;; Read-only system paths (exec + dynamic libs)
 (allow file-read*
+  (literal "/")
   (subpath "/System")
   (subpath "/usr")
   (subpath "/bin")
@@ -80,6 +94,11 @@ ${mach}
   (subpath "/opt/homebrew")
   (subpath "/Applications")
   (subpath "/private/etc")
+  (subpath "/private/var/run")
+  (subpath "/private/var/select")
+  (subpath "/private/tmp")
+  (subpath "/tmp")
+  (subpath "/var")
   (subpath "/etc")
   (subpath "/dev")
   (subpath (param "WORKTREE"))
@@ -94,6 +113,7 @@ ${extraRead}
   (subpath "/dev")
   (subpath "/private/tmp")
   (subpath "/private/var/tmp")
+  (literal "/private/var/run/mDNSResponder")
   (subpath (param "WORKTREE"))
   (subpath (param "GIT_COMMON_DIR"))
   (subpath (param "GIT_DIR"))
