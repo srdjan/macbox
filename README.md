@@ -7,8 +7,6 @@ A CLI that turns your Mac into a local dev workbench for AI coding agents:
 3. Manages **workspaces** with lifecycle (create, archive, restore, evict)
 4. Runs **composable flows** - named step sequences defined in `macbox.json`
 5. Captures **context packs** - reproducible snapshots of repo state for agent handoff
-6. Executes **swarm runs** - the same flow across multiple workspaces in parallel
-
 100% macOS-native. No Docker, no cloud, CLI-first.
 
 > Note: `sandbox-exec` is deprecated by Apple, but still present on macOS today and used by tools in the wild.
@@ -663,28 +661,6 @@ Packs are stored under `<worktree>/.macbox/context/packs/<packId>/` and contain:
 
 ---
 
-## Swarm
-
-Swarm runs a flow across multiple workspaces in parallel with configurable concurrency. Use it for batch operations like running the same build/test flow across several feature branches simultaneously.
-
-```bash
-# Run a flow across existing workspaces
-macbox swarm run --flow build --workspaces ws-abc123,ws-def456,ws-ghi789
-
-# Limit concurrency (default: 3)
-macbox swarm run --flow test --workspaces ws-abc123,ws-def456 --max-parallel 2
-
-# Get JSON output
-macbox swarm run --flow build --workspaces ws-abc123,ws-def456 --json
-
-# Create N workspaces and optionally run a flow on each
-macbox swarm new --count 3 --agent claude --issue 42 --flow build
-```
-
-`macbox swarm new` creates the specified number of workspaces (each with its own worktree) and optionally runs a flow on all of them in parallel.
-
----
-
 ## Tracing sandbox denials (`--trace`)
 
 Seatbelt violations do not reliably appear on stderr/stdout - they're recorded in the macOS unified log.
@@ -751,9 +727,6 @@ deno run -A src/main.ts flow run build
 # Context packs
 deno run -A src/main.ts context pack
 deno run -A src/main.ts context list
-
-# Swarm (parallel execution)
-deno run -A src/main.ts swarm new --count 3 --agent claude --flow build
 ```
 
 ### Build from source

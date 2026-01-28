@@ -12,8 +12,7 @@ laptop sane:
 
 Beyond sandboxing, macbox provides a complete workspace lifecycle: projects
 that track multiple repos, workspaces with archive/restore, composable flows
-defined in `macbox.json`, context packs for reproducible state snapshots, and
-swarm execution for running flows across multiple workspaces in parallel.
+defined in `macbox.json`, and context packs for reproducible state snapshots.
 
 ---
 
@@ -65,9 +64,6 @@ deno task dev -- workspace new --agent claude --issue 42
 
 # run a flow defined in macbox.json
 deno task dev -- flow run build
-
-# swarm: create 3 workspaces and run a flow on each
-deno task dev -- swarm new --count 3 --agent claude --flow build
 ```
 
 Tips:
@@ -998,44 +994,6 @@ Packs live under `<worktree>/.macbox/context/packs/<packId>/`:
 
 ---
 
-## Swarm (parallel execution)
-
-Swarm runs a flow across multiple workspaces concurrently. This is useful when
-you want to apply the same operation (build, test, lint) to several feature
-branches at once, or when creating a batch of workspaces for parallel agent work.
-
-### Running a swarm
-
-```bash
-# Run a flow across specified workspaces
-macbox swarm run --flow build --workspaces ws-abc123,ws-def456,ws-ghi789
-
-# Limit concurrency (default: 3)
-macbox swarm run --flow test --workspaces ws-abc123,ws-def456 --max-parallel 2
-
-# JSON output
-macbox swarm run --flow build --workspaces ws-abc123,ws-def456 --json
-```
-
-### Creating workspace batches
-
-```bash
-# Create 3 workspaces
-macbox swarm new --count 3 --agent claude
-
-# Create 3 workspaces linked to an issue, then run a flow on each
-macbox swarm new --count 3 --agent claude --issue 42 --flow build
-
-# With a preset
-macbox swarm new --count 5 --preset fullstack-typescript --flow test
-```
-
-`macbox swarm new` creates the specified number of workspaces (each with its
-own git worktree and session), then optionally runs a flow on all of them in
-parallel. The maximum count per invocation is 20.
-
----
-
 ## Troubleshooting & FAQ
 
 ### “sandbox-exec: No such file or directory”
@@ -1100,5 +1058,3 @@ Now that you know the basics:
 - **Define flows**: Add a `macbox.json` to your repo root with build/test/deploy
   step sequences
 - **Capture context**: `macbox context pack` before archiving to preserve state
-- **Run in parallel**: `macbox swarm new --count 3 --flow build` to spin up
-  multiple workspaces and run flows across them

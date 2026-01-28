@@ -17,30 +17,7 @@ import {
 } from "./sessions.ts";
 import { detectRepo, ensureWorktree } from "./git.ts";
 import { loadPreset, type LoadedPreset, writeAgentConfig } from "./presets.ts";
-
-const asString = (v: string | boolean | undefined): string | undefined =>
-  v === undefined
-    ? undefined
-    : typeof v === "string"
-    ? v
-    : v
-    ? "true"
-    : "false";
-
-const boolFlag = (v: string | boolean | undefined, dflt: boolean): boolean => {
-  if (v === undefined) return dflt;
-  if (typeof v === "boolean") return v;
-  return v === "true" || v === "1" || v === "yes";
-};
-
-const parsePathList = (
-  v: string | boolean | undefined,
-): ReadonlyArray<string> => {
-  if (v === undefined) return [];
-  const s = typeof v === "string" ? v : v ? "true" : "";
-  if (!s || s === "true") return [];
-  return s.split(",").map((x) => x.trim()).filter((x) => x.length > 0);
-};
+import { asString, boolFlag, parsePathList } from "./flags.ts";
 
 const defaultShellCmd = () => {
   const sh = Deno.env.get("SHELL") || "/bin/zsh";

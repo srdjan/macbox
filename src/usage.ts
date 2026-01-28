@@ -68,10 +68,6 @@ Usage:
   macbox context show <packId> [--workspace <id>] [--worktree <name>] [--repo <path>] [--base <path>]
   macbox context list [--workspace <id>] [--worktree <name>] [--repo <path>] [--base <path>]
 
-  macbox swarm run --flow <name> --workspaces <id1,id2,...> [--max-parallel N] [--json] [--debug] [--repo <path>] [--base <path>]
-  macbox swarm new --count N [--issue N] [--flow <name>] [--preset <name>] [--agent claude|codex]
-                   [--repo <path>] [--base <path>]
-
 Notes:
   • Sessions are persisted under: <base>/sessions/<repoId>/<worktree>.json
     Use 'macbox attach <id>' to re-open a saved sandbox with the same defaults.
@@ -102,10 +98,6 @@ Notes:
   - Flows are named step sequences defined in macbox.json at the repo root.
     Steps can be built-in (steps:shell, steps:git.*), skill-backed (skills:<name>),
     or agent-backed (steps:agent.run). Flow results are saved to .macbox/flows/.
-  - Swarm runs a flow across multiple workspaces in parallel with configurable concurrency.
-    Use 'macbox swarm new' to create N workspaces and optionally run a flow on each.
-    Use 'macbox swarm run' to run a flow across existing workspaces.
-
 Examples:
   deno run -A src/main.ts run --agent claude -- --help
   deno run -A src/main.ts run --agent claude --trace -- --help
@@ -129,8 +121,6 @@ Examples:
   deno run -A src/main.ts workspace new --agent claude --issue 42
   deno run -A src/main.ts workspace list
   deno run -A src/main.ts ws list --archived
-  deno run -A src/main.ts swarm new --count 3 --agent claude --issue 42 --flow build
-  deno run -A src/main.ts swarm run --flow test --workspaces ws-abc123,ws-def456
 
 `;
   console.log(s.trim());

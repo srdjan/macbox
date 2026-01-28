@@ -6,15 +6,7 @@ import { runFlow, type FlowResult } from "./flow_engine.ts";
 import { findWorkspaceById, updateWorkspace } from "./workspace.ts";
 import { loadSessionById } from "./sessions.ts";
 import type { Exit } from "./main.ts";
-
-const asString = (v: string | boolean | undefined): string | undefined =>
-  v === undefined ? undefined : typeof v === "string" ? v : v ? "true" : "false";
-
-const boolFlag = (v: string | boolean | undefined, dflt: boolean): boolean => {
-  if (v === undefined) return dflt;
-  if (typeof v === "boolean") return v;
-  return v === "true" || v === "1" || v === "yes";
-};
+import { asString, boolFlag } from "./flags.ts";
 
 export const flowCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   const a = parseArgs(argv);

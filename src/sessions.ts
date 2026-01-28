@@ -1,4 +1,4 @@
-import { ensureDir } from "./fs.ts";
+import { atomicWriteJson } from "./fs.ts";
 import { pathJoin } from "./os.ts";
 import { repoIdForRoot, sessionFileFor } from "./paths.ts";
 import type { AgentKind } from "./agent.ts";
@@ -32,14 +32,6 @@ export type SessionRecord = {
 };
 
 const isoNow = () => new Date().toISOString();
-
-const atomicWriteJson = async (filePath: string, obj: unknown) => {
-  const dir = filePath.split("/").slice(0, -1).join("/") || ".";
-  await ensureDir(dir);
-  const tmp = `${filePath}.tmp.${Date.now()}`;
-  await Deno.writeTextFile(tmp, JSON.stringify(obj, null, 2) + "\n", { create: true });
-  await Deno.rename(tmp, filePath);
-};
 
 export const saveSession = async (args: {
   readonly baseDir: string;

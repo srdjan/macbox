@@ -8,15 +8,7 @@ import {
   userPresetsDir,
 } from "./presets.ts";
 import { pathJoin } from "./os.ts";
-
-const asString = (v: string | boolean | undefined): string | undefined =>
-  v === undefined
-    ? undefined
-    : typeof v === "string"
-    ? v
-    : v
-    ? "true"
-    : "false";
+import { asString } from "./flags.ts";
 
 const usage = () => {
   console.log(

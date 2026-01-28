@@ -1,8 +1,6 @@
 import { parseArgs } from "./mini_args.ts";
 import { listAvailableProfiles, loadProfiles } from "./profiles.ts";
-
-const asString = (v: string | boolean | undefined): string | undefined =>
-  v === undefined ? undefined : typeof v === "string" ? v : v ? "true" : "false";
+import { asString } from "./flags.ts";
 
 export const profilesCmd = async (argv: ReadonlyArray<string>) => {
   const a = parseArgs(argv);

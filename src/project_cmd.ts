@@ -8,9 +8,7 @@ import {
 } from "./project.ts";
 import type { AgentKind } from "./agent.ts";
 import type { Exit } from "./main.ts";
-
-const asString = (v: string | boolean | undefined): string | undefined =>
-  v === undefined ? undefined : typeof v === "string" ? v : v ? "true" : "false";
+import { asString } from "./flags.ts";
 
 export const projectCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   const a = parseArgs(argv);

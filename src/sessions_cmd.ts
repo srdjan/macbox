@@ -3,9 +3,7 @@ import { detectRepo } from "./git.ts";
 import { defaultBaseDir } from "./paths.ts";
 import { findLatestSession, listSessions, loadSessionById, resolveSessionIdForRepo, deleteAllSessions, deleteSession } from "./sessions.ts";
 import type { AgentKind } from "./agent.ts";
-
-const asString = (v: string | boolean | undefined): string | undefined =>
-  v === undefined ? undefined : typeof v === "string" ? v : v ? "true" : "false";
+import { asString } from "./flags.ts";
 
 export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
   const a = parseArgs(argv);

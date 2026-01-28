@@ -12,7 +12,6 @@ import { projectCmd } from "./project_cmd.ts";
 import { workspaceCmd } from "./workspace_cmd.ts";
 import { flowCmd } from "./flow_cmd.ts";
 import { contextCmd } from "./context_cmd.ts";
-import { swarmCmd } from "./swarm_cmd.ts";
 import { printHelp } from "./usage.ts";
 
 export type Exit = { readonly code: number };
@@ -53,8 +52,6 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
       return await flowCmd(rest);
     case "context":
       return await contextCmd(rest);
-    case "swarm":
-      return await swarmCmd(rest);
     case "help":
     default:
       printHelp();

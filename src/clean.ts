@@ -2,9 +2,7 @@ import { parseArgs } from "./mini_args.ts";
 import { detectRepo, removeWorktree } from "./git.ts";
 import { defaultBaseDir, repoIdForRoot, worktreeDir } from "./paths.ts";
 import { mustExec } from "./exec.ts";
-
-const asString = (v: string | boolean | undefined): string | undefined =>
-  v === undefined ? undefined : typeof v === "string" ? v : v ? "true" : "false";
+import { asString } from "./flags.ts";
 
 export const cleanCmd = async (argv: ReadonlyArray<string>) => {
   const a = parseArgs(argv);

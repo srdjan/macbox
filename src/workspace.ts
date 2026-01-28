@@ -1,4 +1,4 @@
-import { ensureDir } from "./fs.ts";
+import { atomicWriteJson } from "./fs.ts";
 import { pathJoin } from "./os.ts";
 import { workspaceDirForProject, workspaceFileFor, workspacesDir } from "./paths.ts";
 
@@ -48,14 +48,6 @@ const randomId = () => {
 };
 
 export const newWorkspaceId = () => `ws-${randomId()}`;
-
-const atomicWriteJson = async (filePath: string, obj: unknown) => {
-  const dir = filePath.split("/").slice(0, -1).join("/") || ".";
-  await ensureDir(dir);
-  const tmp = `${filePath}.tmp.${Date.now()}`;
-  await Deno.writeTextFile(tmp, JSON.stringify(obj, null, 2) + "\n", { create: true });
-  await Deno.rename(tmp, filePath);
-};
 
 const readJson = async (p: string): Promise<unknown> => {
   const s = await Deno.readTextFile(p);

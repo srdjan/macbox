@@ -10,9 +10,7 @@ import {
 import { findWorkspaceById, updateWorkspace } from "./workspace.ts";
 import { loadSessionById } from "./sessions.ts";
 import type { Exit } from "./main.ts";
-
-const asString = (v: string | boolean | undefined): string | undefined =>
-  v === undefined ? undefined : typeof v === "string" ? v : v ? "true" : "false";
+import { asString } from "./flags.ts";
 
 export const contextCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   const a = parseArgs(argv);
