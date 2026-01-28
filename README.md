@@ -559,6 +559,46 @@ Flows are named step sequences defined in a `macbox.json` file at the repo root.
 
 The `steps:gh.*` types require the `gh` CLI to be installed and authenticated.
 
+### Step outputs and variable passing
+
+Every step produces an `outputs` map that downstream steps can reference. All steps populate `outputs.result` with their trimmed stdout. GitHub steps that return JSON additionally parse named fields:
+
+| Step type | Extra outputs |
+|-----------|--------------|
+| `steps:gh.issueGet` | `title`, `body`, `url`, `state` |
+| `steps:gh.prGet` | `title`, `body`, `url`, `state`, `headRefName`, `baseRefName` |
+| `steps:gh.prCreate` | `url` |
+
+Use `${steps.<stepId>.<path>}` syntax in any string value within step `args` to reference a previous step's data. Supported paths:
+
+- `${steps.<stepId>.outputs.<key>}` - a named output value
+- `${steps.<stepId>.stdout}` - raw stdout (untrimmed)
+- `${steps.<stepId>.stderr}` - raw stderr
+- `${steps.<stepId>.exitCode}` - numeric exit code as string
+
+References to nonexistent step IDs or missing output keys resolve to an empty string.
+
+Example flow using variable passing:
+
+```json
+{
+  "flows": {
+    "issue-branch": {
+      "description": "Create a branch from a GitHub issue",
+      "steps": [
+        { "id": "issue", "type": "steps:gh.issueGet", "args": { "number": 42 } },
+        { "id": "branch", "type": "steps:shell", "args": { "cmd": "git checkout -b issue-42" } },
+        { "id": "pr", "type": "steps:gh.prCreate", "args": {
+            "title": "${steps.issue.outputs.title}",
+            "body": "Resolves #42\n\n${steps.issue.outputs.body}"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
 ### Running flows
 
 ```bash
@@ -575,7 +615,7 @@ macbox flow list
 macbox flow show build
 ```
 
-Flow results are persisted to `<worktree>/.macbox/flows/<flowName>-<timestamp>.json`.
+Flow results are persisted to `<worktree>/.macbox/flows/<flowName>-<timestamp>.json`. Each step result includes `exitCode`, `stdout`, `stderr`, timing data, and an `outputs` map containing the values available for interpolation.
 
 Steps execute sequentially. A non-zero exit code halts the flow unless `continueOnError: true` is set on that step.
 

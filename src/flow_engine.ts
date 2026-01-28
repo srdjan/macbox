@@ -6,6 +6,65 @@ import { flowResultsDir } from "./paths.ts";
 import type { AgentKind } from "./agent.ts";
 import type { SessionCaps } from "./sessions.ts";
 
+// --- Step output interpolation ---
+
+const buildResultIndex = (
+  results: ReadonlyArray<StepResult>,
+): ReadonlyMap<string, StepResult> => {
+  const m = new Map<string, StepResult>();
+  for (const r of results) m.set(r.stepId, r);
+  return m;
+};
+
+const resolveRef = (
+  stepId: string,
+  path: string,
+  index: ReadonlyMap<string, StepResult>,
+): string => {
+  const result = index.get(stepId);
+  if (!result) return "";
+  if (path === "exitCode") return String(result.exitCode);
+  if (path === "stdout") return result.stdout ?? "";
+  if (path === "stderr") return result.stderr ?? "";
+  if (path.startsWith("outputs.")) {
+    const key = path.slice("outputs.".length);
+    return result.outputs[key] ?? "";
+  }
+  return "";
+};
+
+const interpolateValue = (
+  value: unknown,
+  index: ReadonlyMap<string, StepResult>,
+): unknown => {
+  if (typeof value === "string") {
+    return value.replace(
+      /\$\{steps\.([^.}]+)\.([^}]+)\}/g,
+      (_match, stepId, path) => resolveRef(stepId as string, path as string, index),
+    );
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => interpolateValue(v, index));
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = interpolateValue(v, index);
+    }
+    return out;
+  }
+  return value;
+};
+
+const interpolateStep = (
+  step: StepDef,
+  previousResults: ReadonlyArray<StepResult>,
+): StepDef => {
+  if (!step.args) return step;
+  const index = buildResultIndex(previousResults);
+  return { ...step, args: interpolateValue(step.args, index) as Record<string, unknown> };
+};
+
 export type FlowResult = {
   readonly schema: "macbox.flow.result.v1";
   readonly flowName: string;
@@ -52,7 +111,8 @@ export const runFlow = async (args: {
   for (const step of args.flowDef.steps) {
     console.error(`macbox: flow/${args.flowName}: running step ${step.id} (${step.type})`);
 
-    const result = await executeStep(step, ctx);
+    const resolved = interpolateStep(step, results);
+    const result = await executeStep(resolved, ctx);
     results.push(result);
 
     if (result.exitCode !== 0) {

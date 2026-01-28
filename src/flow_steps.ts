@@ -31,6 +31,7 @@ export type StepResult = {
   readonly completedAt: string;
   readonly error?: string;
   readonly skipped?: boolean;
+  readonly outputs: Readonly<Record<string, string>>;
 };
 
 const isoNow = () => new Date().toISOString();
@@ -41,6 +42,7 @@ const wrapResult = (
   step: StepDef,
   startedAt: string,
   result: { code: number; stdout?: string; stderr?: string },
+  extraOutputs?: Record<string, string>,
 ): StepResult => ({
   stepId: step.id,
   type: step.type,
@@ -50,6 +52,7 @@ const wrapResult = (
   stderr: result.stderr,
   startedAt,
   completedAt: isoNow(),
+  outputs: { result: result.stdout?.trim() ?? "", ...extraOutputs },
 });
 
 const wrapError = (step: StepDef, startedAt: string, err: unknown): StepResult => ({
@@ -60,6 +63,7 @@ const wrapError = (step: StepDef, startedAt: string, err: unknown): StepResult =
   error: err instanceof Error ? err.message : String(err),
   startedAt,
   completedAt: isoNow(),
+  outputs: {},
 });
 
 // --- Built-in step handlers ---
@@ -255,6 +259,27 @@ const skillStep = async (
   }
 };
 
+// --- Output helpers ---
+
+const parseJsonOutputs = (
+  stdout: string | undefined,
+  keys: ReadonlyArray<string>,
+): Record<string, string> => {
+  if (!stdout) return {};
+  try {
+    const parsed = JSON.parse(stdout.trim());
+    const out: Record<string, string> = {};
+    for (const key of keys) {
+      if (parsed[key] !== undefined && parsed[key] !== null) {
+        out[key] = String(parsed[key]);
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+};
+
 // --- GitHub steps ---
 
 const ghIssueGetStep: StepHandler = async (step, ctx) => {
@@ -267,7 +292,8 @@ const ghIssueGetStep: StepHandler = async (step, ctx) => {
     ["issue", "view", String(number), "--json", "title,body,labels,assignees,state,url"],
     ctx.worktreePath,
   );
-  return wrapResult(step, startedAt, { code: result.code, stdout: result.stdout, stderr: result.stderr });
+  const extra = parseJsonOutputs(result.stdout, ["title", "body", "url", "state"]);
+  return wrapResult(step, startedAt, { code: result.code, stdout: result.stdout, stderr: result.stderr }, extra);
 };
 
 const ghPrGetStep: StepHandler = async (step, ctx) => {
@@ -280,7 +306,8 @@ const ghPrGetStep: StepHandler = async (step, ctx) => {
     ["pr", "view", String(number), "--json", "title,body,labels,assignees,state,url,headRefName,baseRefName"],
     ctx.worktreePath,
   );
-  return wrapResult(step, startedAt, { code: result.code, stdout: result.stdout, stderr: result.stderr });
+  const extra = parseJsonOutputs(result.stdout, ["title", "body", "url", "state", "headRefName", "baseRefName"]);
+  return wrapResult(step, startedAt, { code: result.code, stdout: result.stdout, stderr: result.stderr }, extra);
 };
 
 const ghPrCreateStep: StepHandler = async (step, ctx) => {
@@ -295,7 +322,8 @@ const ghPrCreateStep: StepHandler = async (step, ctx) => {
   if (typeof step.args?.base === "string") args.push("--base", step.args.base as string);
   if (typeof step.args?.head === "string") args.push("--head", step.args.head as string);
   const result = await ghExec(args, ctx.worktreePath);
-  return wrapResult(step, startedAt, { code: result.code, stdout: result.stdout, stderr: result.stderr });
+  const url = result.stdout?.trim() ?? "";
+  return wrapResult(step, startedAt, { code: result.code, stdout: result.stdout, stderr: result.stderr }, url ? { url } : undefined);
 };
 
 const ghPrMergeStep: StepHandler = async (step, ctx) => {
@@ -350,6 +378,7 @@ export const executeStep = async (
       error: `unknown step type: ${step.type}`,
       startedAt: isoNow(),
       completedAt: isoNow(),
+      outputs: {},
     };
   }
 

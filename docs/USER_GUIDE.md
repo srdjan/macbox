@@ -861,6 +861,62 @@ flow unless `continueOnError: true` is set on that step.
 
 - `skills:<name>` - runs a named skill. Optional args: `skillArgs` (string array).
 
+### Step outputs and variable passing
+
+Every step produces an `outputs` map that downstream steps can reference. All
+steps populate `outputs.result` with their trimmed stdout. Some steps parse
+additional structured fields into outputs:
+
+- `steps:gh.issueGet` adds `title`, `body`, `url`, `state`
+- `steps:gh.prGet` adds `title`, `body`, `url`, `state`, `headRefName`, `baseRefName`
+- `steps:gh.prCreate` adds `url`
+
+To reference a previous step's output, use `${steps.<stepId>.<path>}` in any
+string value inside step `args`. Supported paths:
+
+- `outputs.<key>` - a named output (e.g. `${steps.build.outputs.result}`)
+- `stdout` - raw stdout (not trimmed)
+- `stderr` - raw stderr
+- `exitCode` - numeric exit code as a string
+
+If a referenced step ID does not exist or the output key is missing, the
+expression resolves to an empty string. This makes it safe to reference
+optional earlier steps.
+
+**Example: chaining shell outputs**
+
+```json
+{
+  "flows": {
+    "version-tag": {
+      "steps": [
+        { "id": "ver", "type": "steps:shell", "args": { "cmd": "cat VERSION" } },
+        { "id": "tag", "type": "steps:shell", "args": { "cmd": "git tag v${steps.ver.outputs.result}" } }
+      ]
+    }
+  }
+}
+```
+
+**Example: issue-driven PR creation**
+
+```json
+{
+  "flows": {
+    "issue-pr": {
+      "steps": [
+        { "id": "issue", "type": "steps:gh.issueGet", "args": { "number": 42 } },
+        { "id": "pr", "type": "steps:gh.prCreate", "args": {
+            "title": "${steps.issue.outputs.title}",
+            "body": "Closes #42\n\n${steps.issue.outputs.body}"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
 ### Running flows
 
 ```bash
@@ -881,8 +937,8 @@ macbox flow show build
 ```
 
 Flow results are saved to `<worktree>/.macbox/flows/<flowName>-<timestamp>.json`
-with schema `macbox.flow.result.v1`, containing the flow name, per-step results,
-overall success/failure, and timing data.
+with schema `macbox.flow.result.v1`, containing the flow name, per-step results
+(including each step's `outputs` map), overall success/failure, and timing data.
 
 ### Hooks
 
