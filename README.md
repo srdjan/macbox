@@ -59,6 +59,9 @@ macbox run --agent claude -- --help
 # Create a named worktree
 macbox run --agent codex --worktree ai-codex -- --help
 
+# Create a worktree from a specific branch or ref
+macbox run --agent claude --branch feature/login -- --help
+
 # Override the executable (if your agent is not on PATH as `claude` / `codex`)
 macbox run --cmd /opt/homebrew/bin/claude --worktree ai1 -- --help
 
@@ -81,6 +84,9 @@ macbox shell --worktree ai -- /bin/zsh -l
 
 # With a profile
 macbox shell --worktree ai --profile host-tools -- /bin/zsh -l
+
+# From a specific branch
+macbox shell --agent claude --branch feature/login
 ```
 
 ### Clean up worktrees
@@ -96,8 +102,16 @@ macbox clean --all
 
 Inside the sandbox:
 - `HOME` is set to `<worktree>/.macbox/home`
-- Caches are set to `<worktree>/.macbox/cache`
+- `XDG_CONFIG_HOME` is set to `<worktree>/.macbox/home/.config`
+- `XDG_CACHE_HOME` is set to `<worktree>/.macbox/cache`
 - `TMPDIR` is set to `<worktree>/.macbox/tmp`
+- `PATH` is set to `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`
+- `DENO_DIR` is set to `<worktree>/.macbox/cache/deno`
+- `NPM_CONFIG_CACHE` is set to `<worktree>/.macbox/cache/npm`
+- `YARN_CACHE_FOLDER` is set to `<worktree>/.macbox/cache/yarn`
+- `PNPM_HOME` is set to `<worktree>/.macbox/home/.local/share/pnpm`
+- `GIT_CONFIG_GLOBAL` is set to `<worktree>/.macbox/home/.gitconfig`
+- `GIT_CONFIG_SYSTEM` is set to `/dev/null`
 - Read/exec of system paths is allowed (including Homebrew)
 - **Read/write** is limited to:
   - The worktree path
@@ -163,7 +177,7 @@ macbox profiles show agent-claude
 macbox ships bundled profiles that are auto-applied when you pass `--agent`:
 
 - `agent-claude`: enables Mach service lookups (so Keychain/system IPC works).
-- `agent-codex`: enables Mach service lookups and sets `CODEX_HOME=$HOME/.codex` inside the sandbox.
+- `agent-codex`: enables Mach service lookups. `CODEX_HOME=$HOME/.codex` is set by macbox's environment setup (`env.ts`), not by the profile itself.
 
 ---
 
@@ -196,7 +210,7 @@ macbox run --preset fullstack-typescript --block-network -- --help
 macbox ships with these presets:
 
 - `fullstack-typescript`: Node.js and Deno toolchains, `host-tools` profile, `NODE_ENV=development`
-- `python-ml`: Python with pip, pyenv, virtualenvs, `host-tools` profile
+- `python-ml`: Python with pip, pyenv, virtualenvs, `host-tools` profile, `PYTHONDONTWRITEBYTECODE=1`
 - `rust-dev`: Cargo and rustup toolchains, `host-tools` profile, `RUST_BACKTRACE=1`
 
 ### Create your own preset
@@ -217,6 +231,11 @@ macbox presets delete my-preset
 
 Presets are stored in `~/.config/macbox/presets/<name>.json`.
 
+Preset search order:
+1. `$MACBOX_PRESETS_DIR/<name>.json` (if set)
+2. `~/.config/macbox/presets/<name>.json`
+3. Bundled presets next to the binary (or `<prefix>/share/macbox/presets`)
+
 ### Preset schema
 
 ```json
@@ -225,6 +244,8 @@ Presets are stored in `~/.config/macbox/presets/<name>.json`.
   "description": "My custom development preset",
   "agent": "claude",
   "model": "claude-sonnet-4-20250514",
+  "apiKeyEnv": "ANTHROPIC_API_KEY",
+  "cmd": "/opt/homebrew/bin/claude",
   "profiles": ["host-tools", "host-ssh"],
   "capabilities": {
     "network": true,
@@ -244,6 +265,8 @@ Preset fields:
 
 - `agent`: `claude`, `codex`, or `custom`
 - `model`: Model identifier (written to agent config in sandbox home)
+- `apiKeyEnv`: Name of the environment variable holding the API key (e.g. `ANTHROPIC_API_KEY`)
+- `cmd`: Explicit path to the agent executable (overrides agent-based lookup)
 - `profiles`: Array of profile names to compose
 - `capabilities`: Network, exec, and filesystem permissions
 - `env`: Environment variables to inject into the sandbox
@@ -283,7 +306,15 @@ macbox attach latest
 macbox attach <repoId/worktreeName>
 macbox attach <repoId/worktreeName> -- /bin/zsh -l
 macbox attach <repoId/worktreeName> --trace
+
+# Override session defaults on attach
+macbox attach latest --profile host-ssh
+macbox attach latest --repo /path/to/repo
+macbox attach latest --block-network
+macbox attach latest --allow-fs-read=/opt/homebrew
 ```
+
+`attach` accepts the same `--profile` and capability override flags as `run`/`shell` (`--allow-network`, `--block-network`, `--allow-exec`, `--block-exec`, `--allow-fs-read`, `--allow-fs-rw`).
 
 ### Clean/delete sessions
 
@@ -308,6 +339,7 @@ Think of them as "named macros" that live inside the sandbox worktree:
 
 ```bash
 macbox skills list --worktree ai
+macbox skills list --worktree ai --json
 ```
 
 ### Init a skill
@@ -329,6 +361,15 @@ macbox skills run fmt --worktree ai
 macbox skills run fmt --worktree ai -- --help
 macbox skills run fmt --agent codex --worktree ai-codex -- --help
 macbox skills run fmt --worktree ai --trace
+
+# Capture stdout/stderr without the JSON envelope
+macbox skills run fmt --worktree ai --capture
+
+# Write structured result to a custom path
+macbox skills run fmt --worktree ai --result output.json
+
+# Use --session instead of --worktree to reuse a saved session
+macbox skills run fmt --session latest
 ```
 
 ### `skill.json` schema
@@ -338,7 +379,7 @@ macbox skills run fmt --worktree ai --trace
   "name": "fmt",
   "description": "Format the repo (runs inside the sandbox)",
   "command": ["deno", "fmt"],
-  "cwd": "${WORKTREE}",
+  "cwd": ".",
   "env": {
     "EXAMPLE": "hello-from-${SKILL_DIR}"
   }
@@ -347,7 +388,7 @@ macbox skills run fmt --worktree ai --trace
 
 Notes:
 - `command` is an argv list. Args after `--` are appended.
-- `cwd` defaults to the skill directory. Relative paths are resolved against the skill directory.
+- `cwd` defaults to the skill directory. Relative paths are resolved against the skill directory. `cwd` does **not** support `${WORKTREE}` variable expansion (only `command` and `env` do).
 - `env` values support `${WORKTREE}` and `${SKILL_DIR}` expansion.
 
 ### Inspect and edit skills
@@ -433,6 +474,8 @@ macbox project remove my-app
 
 Project registry is stored at `~/.config/macbox/projects.json`.
 
+Each project entry also supports optional `defaultProfiles` (array of profile names) and `preferredFlows` (array of flow names) fields.
+
 ---
 
 ## Workspaces
@@ -470,8 +513,10 @@ The alias `macbox ws` is shorthand for `macbox workspace`.
 ### Open a workspace
 
 ```bash
-macbox workspace open <id>            # attach to the workspace's session
+macbox workspace open <id>            # prints session info and attach instructions
 ```
+
+`workspace open` prints the workspace session ID and worktree path, along with the `macbox attach` command to run. It does not directly launch a sandbox.
 
 ### Archive and restore
 
@@ -503,13 +548,14 @@ Flows are named step sequences defined in a `macbox.json` file at the repo root.
   "schema": "macbox.config.v1",
   "defaults": {
     "agent": "claude",
+    "preset": "fullstack-typescript",
     "profiles": ["host-tools"]
   },
   "flows": {
     "build": {
       "description": "Build and test the project",
       "steps": [
-        { "id": "install", "type": "steps:shell", "args": { "cmd": "npm install" } },
+        { "id": "install", "type": "steps:shell", "label": "Install deps", "args": { "cmd": "npm install" } },
         { "id": "build", "type": "steps:shell", "args": { "cmd": "npm run build" } },
         { "id": "test", "type": "steps:shell", "args": { "cmd": "npm test" }, "continueOnError": true }
       ]
@@ -533,6 +579,8 @@ Flows are named step sequences defined in a `macbox.json` file at the repo root.
   }
 }
 ```
+
+Each step supports an optional `label` field (string) for human-readable display during flow execution.
 
 ### Built-in step types
 
@@ -619,11 +667,11 @@ Steps execute sequentially. A non-zero exit code halts the flow unless `continue
 
 ### Hooks
 
-Hooks are step arrays that run automatically at lifecycle points:
+Hooks are step arrays defined in `macbox.json` for lifecycle points:
 
-- `onWorkspaceCreate` - runs after `macbox workspace new`
+- `onWorkspaceCreate` - defined in schema but **not yet invoked** by `macbox workspace new`
 - `onWorkspaceRestore` - runs after `macbox workspace restore`
-- `onFlowComplete` - runs after any flow completes
+- `onFlowComplete` - defined in schema but **not yet invoked** after flow completion
 
 ---
 
@@ -638,15 +686,22 @@ macbox context pack
 # Create for a specific workspace
 macbox context pack --workspace ws-abc123
 
+# Create for a specific worktree
+macbox context pack --worktree ai --repo .
+
 # Add a custom summary
 macbox context pack --summary "Pre-merge state for issue #42"
 
 # List packs
 macbox context list
+macbox context list --worktree ai --repo .
 
 # Inspect a pack
 macbox context show <packId>
+macbox context show <packId> --worktree ai --repo .
 ```
+
+All context subcommands (`pack`, `show`, `list`) accept `--worktree` and `--repo` flags to target a specific worktree.
 
 Packs are stored under `<worktree>/.macbox/context/packs/<packId>/` and contain:
 
@@ -661,14 +716,16 @@ Packs are stored under `<worktree>/.macbox/context/packs/<packId>/` and contain:
 
 ---
 
-## Tracing sandbox denials (`--trace`)
+## Tracing sandbox denials (`--trace` and `--debug`)
 
 Seatbelt violations do not reliably appear on stderr/stdout - they're recorded in the macOS unified log.
-When `--trace` is enabled, macbox:
 
-1. Enables `(debug deny)` in the generated SBPL profile
-2. After the command exits, queries the unified log for sandbox denial events
-3. Writes the output to `<worktree>/.macbox/logs/sandbox-violations.log`
+`--debug` enables `(debug deny)` in the generated SBPL profile so denials are logged by the system. This is useful when you want to inspect logs yourself.
+
+`--trace` includes everything `--debug` does, plus:
+
+1. After the command exits, queries the unified log for sandbox denial events
+2. Writes the output to `<worktree>/.macbox/logs/sandbox-violations.log`
 
 ---
 
@@ -734,7 +791,10 @@ deno run -A src/main.ts context list
 Compile a standalone macOS binary:
 
 ```bash
-deno task compile:mac
+deno task compile:mac              # default (current arch)
+deno task compile:mac-arm          # Apple Silicon (aarch64)
+deno task compile:mac-x64          # Intel (x86_64)
+deno task compile:mac-universal    # Universal binary (both archs via lipo)
 ```
 
 Install using the install script:

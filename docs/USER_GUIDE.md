@@ -227,12 +227,19 @@ Inside the sandbox, macbox sets:
 - `XDG_CONFIG_HOME=<worktree>/.macbox/home/.config`
 - `XDG_CACHE_HOME=<worktree>/.macbox/cache`
 - `TMPDIR=<worktree>/.macbox/tmp`
+- `PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`
+- `DENO_DIR=<worktree>/.macbox/cache/deno`
+- `NPM_CONFIG_CACHE=<worktree>/.macbox/cache/npm`
+- `YARN_CACHE_FOLDER=<worktree>/.macbox/cache/yarn`
+- `PNPM_HOME=<worktree>/.macbox/home/.local/share/pnpm`
+- `GIT_CONFIG_GLOBAL=<worktree>/.macbox/home/.gitconfig`
+- `GIT_CONFIG_SYSTEM=/dev/null`
 
 Codex also gets:
 
 - `CODEX_HOME=$HOME/.codex` (inside the sandbox)
 
-So by default you **don’t** accidentally write to your host `~/.codex` or other
+So by default you **don't** accidentally write to your host `~/.codex` or other
 personal config dirs.
 
 ---
@@ -299,10 +306,19 @@ Create `~/.config/macbox/profiles/my-toolchain.json`:
 ```json
 {
   "name": "my-toolchain",
-  "extraReadPaths": ["/Users/you/.asdf", "/Users/you/.npm"],
-  "extraWritePaths": []
+  "description": "Custom toolchain paths for asdf and npm",
+  "read_paths": ["/Users/you/.asdf", "/Users/you/.npm"],
+  "write_paths": [],
+  "mach_lookup": false
 }
 ```
+
+Profile fields:
+- `name`: Profile identifier
+- `description`: Human-readable description (optional)
+- `read_paths`: Additional read-only paths (not `extraReadPaths`)
+- `write_paths`: Additional writable paths (not `extraWritePaths`)
+- `mach_lookup`: Allow Mach service lookups — `true` for all, or an array of service names (optional)
 
 Then:
 
@@ -370,6 +386,11 @@ macbox presets edit my-workflow
 
 User presets are stored in `~/.config/macbox/presets/<name>.json`.
 
+Preset search order:
+1. `$MACBOX_PRESETS_DIR/<name>.json` (if set)
+2. `~/.config/macbox/presets/<name>.json`
+3. Bundled presets next to the binary (or `<prefix>/share/macbox/presets`)
+
 ### Preset schema
 
 ```json
@@ -378,6 +399,8 @@ User presets are stored in `~/.config/macbox/presets/<name>.json`.
   "description": "My custom development workflow",
   "agent": "claude",
   "model": "claude-sonnet-4-20250514",
+  "apiKeyEnv": "ANTHROPIC_API_KEY",
+  "cmd": "/opt/homebrew/bin/claude",
   "profiles": ["host-tools", "host-ssh"],
   "capabilities": {
     "network": true,
@@ -402,6 +425,8 @@ Field reference:
 | `description` | string | Human-readable description |
 | `agent` | string | `claude`, `codex`, or `custom` |
 | `model` | string | Model ID (written to agent config in sandbox) |
+| `apiKeyEnv` | string | Name of env var holding the API key |
+| `cmd` | string | Explicit path to the agent executable |
 | `profiles` | array | Profile names to compose |
 | `capabilities.network` | boolean | Allow outbound network |
 | `capabilities.exec` | boolean | Allow subprocess execution |
@@ -547,6 +572,9 @@ Skill runs support the same sandbox knobs as `run/shell`:
 ```bash
 macbox skills run fmt --worktree ai --block-network -- --check
 macbox skills run fmt --worktree ai --profile host-tools -- --check
+
+# Write structured result to a custom path
+macbox skills run fmt --worktree ai --result output.json
 ```
 
 ### Skill runner contract (v1)
@@ -656,14 +684,20 @@ You’ll get a single envelope like:
 {
   "schema": "macbox.skills.run.v1",
   "ok": true,
+  "exitCode": 0,
+  "session": "abc123",
   "skill": {
     "name": "repo-summary",
     "scope": "worktree",
     "dir": "skills/repo-summary"
   },
+  "resultPath": ".macbox/tmp/skill-result-abc123.json",
   "result": { "worktree": "...", "args": ["--fast"], "topLevelEntries": 12 },
+  "resultError": null,
   "stdout": "...",
-  "stderr": ""
+  "stderr": "",
+  "stdoutTruncated": false,
+  "stderrTruncated": false
 }
 ```
 
@@ -723,8 +757,9 @@ macbox workspace new --agent claude --branch feature/login --worktree ws-login
 
 Workspace creation does all the plumbing: detects the repo, finds or creates a
 project entry, creates a git worktree, sets up sandbox directories, saves a
-session record, and creates the workspace file. If `macbox.json` defines an
-`onWorkspaceCreate` hook, it runs automatically.
+session record, and creates the workspace file.
+
+> Note: `onWorkspaceCreate` is defined in the `macbox.json` hook schema but is **not yet invoked** by `macbox workspace new`.
 
 ### Listing and inspecting
 
@@ -743,8 +778,7 @@ macbox workspace show <id>            # full workspace details
 macbox workspace open <id>
 ```
 
-This loads the workspace's session and attaches to it (same as
-`macbox attach` but resolved by workspace ID).
+This prints the workspace's session info (session ID, worktree path) and the `macbox attach` command to run. It does **not** directly launch a sandbox — use the printed `macbox attach` command to actually enter the sandbox.
 
 ### Archive and restore
 
@@ -785,13 +819,14 @@ flow unless `continueOnError: true` is set on that step.
   "schema": "macbox.config.v1",
   "defaults": {
     "agent": "claude",
+    "preset": "fullstack-typescript",
     "profiles": ["host-tools"]
   },
   "flows": {
     "build": {
       "description": "Install, build, and test",
       "steps": [
-        { "id": "install", "type": "steps:shell", "args": { "cmd": "npm install" } },
+        { "id": "install", "type": "steps:shell", "label": "Install deps", "args": { "cmd": "npm install" } },
         { "id": "build", "type": "steps:shell", "args": { "cmd": "npm run build" } },
         { "id": "test", "type": "steps:shell", "args": { "cmd": "npm test" }, "continueOnError": true }
       ]
@@ -825,6 +860,8 @@ flow unless `continueOnError: true` is set on that step.
 ```
 
 ### Built-in step types
+
+Each step supports an optional `label` field (string) for human-readable display during flow execution.
 
 **Shell:**
 
@@ -938,12 +975,12 @@ with schema `macbox.flow.result.v1`, containing the flow name, per-step results
 
 ### Hooks
 
-Hooks are arrays of steps that run at workspace lifecycle points. They use the
-same step types as flows:
+Hooks are arrays of steps defined in `macbox.json` for workspace lifecycle points.
+They use the same step types as flows:
 
-- `onWorkspaceCreate` - runs after `macbox workspace new`
+- `onWorkspaceCreate` - defined in schema but **not yet invoked** by `macbox workspace new`
 - `onWorkspaceRestore` - runs after `macbox workspace restore`
-- `onFlowComplete` - runs after any flow finishes
+- `onFlowComplete` - defined in schema but **not yet invoked** after flow completion
 
 ---
 
