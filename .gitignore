@@ -7,3 +7,6 @@ deno.lock
 dist/macbox
 $HOME/.local/bin/macbox
 $HOME/.local/share/macbox/profiles/*
+dist/profiles.tar.gz
+dist/macbox-aarch64
+dist/macbox-x86_64
