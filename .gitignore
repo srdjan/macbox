@@ -6,3 +6,4 @@ deno.lock
 *.log
 dist/macbox
 $HOME/.local/bin/macbox
+$HOME/.local/share/macbox/profiles/*
