@@ -75,30 +75,27 @@ sandbox is the **lock on the guest house door**:
 ## Quickstart
 
 ```bash
-# show help
-macbox --help
+# simplest: auto-detects agent, creates a sandboxed worktree, launches it
+macbox start
 
-# run Claude Code in a sandboxed worktree (defaults to ai-claude)
-macbox run --agent claude -- --help
+# or use the agent shortcut directly
+macbox claude
+macbox codex
 
-# open an interactive shell in the same sandbox
-macbox shell --agent claude
-
-# run Codex in its own sandbox worktree
-macbox run --agent codex --worktree ai-codex -- --help
+# pass flags through to the agent after --
+macbox claude -- -p "fix the build"
 
 # use a preset for a complete workflow configuration
-macbox run --preset fullstack-typescript -- --help
-macbox shell --preset python-ml
-
-# create a managed workspace linked to a GitHub issue
-macbox workspace new --agent claude --issue 42
+macbox start --preset fullstack-typescript
 
 # run a flow defined in macbox.json
 macbox flow run build
 
 # run Ralph autonomous loop with a PRD
 macbox ralph prd.json --preset ralph-typescript
+
+# show help
+macbox --help
 ```
 
 Tip: running macbox from outside your repo? Add `--repo /path/to/repo`.
@@ -153,19 +150,51 @@ macbox shell --agent claude --base ./.macbox_state
 
 ## Core commands
 
-### `macbox run`
+### `macbox start` / `macbox claude` / `macbox codex`
 
-Use it when you want to launch an agent CLI (or any command) inside the sandbox.
+The simplest way to launch an agent. `start` auto-detects which agent is
+installed, loads defaults from your project and `macbox.json`, auto-names the
+worktree (incrementing: `ai-claude`, `ai-claude-1`, ...), and delegates to
+`macbox run`.
 
 ```bash
-# Runs `claude ...` inside a sandboxed worktree
-macbox run --agent claude -- --help
+# auto-detect agent and launch
+macbox start
 
-# Use a preset for a complete workflow configuration
-macbox run --preset fullstack-typescript -- --help
+# explicit agent shortcuts (equivalent to macbox start --agent claude/codex)
+macbox claude
+macbox codex
 
-# Custom command (if your agent executable isn't on PATH)
+# pass flags through to the agent after --
+macbox claude -- -p "fix the build"
+
+# with a preset
+macbox start --preset fullstack-typescript
+
+# with a prompt injected into the agent
+macbox claude --prompt "refactor the auth module"
+```
+
+If both `claude` and `codex` are installed, `start` defaults to `claude` and
+prints a note. Use `--agent` to override.
+
+### `macbox run`
+
+Lower-level command when you need explicit control over the worktree name,
+branch, or want to use `--cmd` with a custom executable.
+
+```bash
+# named worktree
+macbox run --agent claude --worktree my-feature -- --help
+
+# from a specific branch
+macbox run --agent claude --branch feature/login -- --help
+
+# custom executable (if your agent isn't on PATH as `claude`)
 macbox run --cmd /opt/homebrew/bin/claude --worktree ai1 -- --help
+
+# with a preset
+macbox run --preset fullstack-typescript -- --help
 ```
 
 Everything after `--` is passed directly to the agent command.
