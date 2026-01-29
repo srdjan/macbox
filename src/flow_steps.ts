@@ -6,6 +6,9 @@ import type { AgentKind } from "./agent.ts";
 import { defaultAgentCmd } from "./agent.ts";
 import type { SessionCaps } from "./sessions.ts";
 import { ghExec } from "./gh.ts";
+import { runRalphLoop, loadPrdFromFile, promptToPrd, validatePrd, parseRalphConfig } from "./ralph.ts";
+import type { Prd } from "./ralph_types.ts";
+import { pathJoin } from "./os.ts";
 
 export type StepContext = {
   readonly worktreePath: string;
@@ -226,14 +229,64 @@ const agentRunStep: StepHandler = async (step, ctx) => {
   }
 };
 
-// Placeholder for future autonomous loop integration.
+// Autonomous loop step: runs the Ralph pattern over a PRD or prompt.
 const ralphRunStep: StepHandler = async (step, ctx) => {
   const startedAt = isoNow();
-  return wrapError(
-    step,
-    startedAt,
-    "steps:ralph.run is not implemented yet. Use steps:agent.run or skills:<name> for now.",
-  );
+  const agent = ctx.agent;
+  if (!agent || agent === "custom") {
+    return wrapError(step, startedAt, "steps:ralph.run requires a configured agent (claude or codex)");
+  }
+
+  try {
+    // Resolve PRD from args
+    const prdArg = step.args?.prd;
+    const promptArg = step.args?.prompt;
+    let prd: Prd;
+    let prdPath: string | undefined;
+
+    if (typeof prdArg === "string") {
+      prdPath = pathJoin(ctx.worktreePath, prdArg);
+      prd = await loadPrdFromFile(prdPath);
+    } else if (prdArg && typeof prdArg === "object") {
+      prd = validatePrd(prdArg);
+    } else if (typeof promptArg === "string") {
+      prd = promptToPrd(promptArg);
+    } else {
+      return wrapError(step, startedAt, "steps:ralph.run requires args.prd (path or object) or args.prompt (string)");
+    }
+
+    const config = parseRalphConfig(step.args?.config);
+
+    const state = await runRalphLoop({
+      prd,
+      prdPath,
+      config,
+      worktreePath: ctx.worktreePath,
+      repoRoot: ctx.repoRoot,
+      gitCommonDir: ctx.gitCommonDir,
+      gitDir: ctx.gitDir,
+      agent,
+      profiles: ctx.profiles,
+      caps: ctx.caps,
+      env: ctx.env,
+      debug: ctx.debug,
+    });
+
+    const code = state.allStoriesPassed ? 0 : 1;
+    const stdout = JSON.stringify({
+      terminationReason: state.terminationReason,
+      iterationsRun: state.iterations.length,
+      storiesPassed: state.prd.userStories.filter((s) => s.passes).length,
+      storiesTotal: state.prd.userStories.length,
+    });
+
+    return wrapResult(step, startedAt, { code, stdout }, {
+      terminationReason: state.terminationReason,
+      iterationsRun: String(state.iterations.length),
+    });
+  } catch (err) {
+    return wrapError(step, startedAt, err);
+  }
 };
 
 const skillStep = async (

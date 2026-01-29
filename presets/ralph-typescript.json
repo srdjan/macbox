@@ -1,0 +1,20 @@
+{
+  "name": "ralph-typescript",
+  "description": "Ralph autonomous loop for TypeScript projects",
+  "agent": "claude",
+  "profiles": ["host-tools"],
+  "capabilities": {
+    "network": true,
+    "exec": true,
+    "extraReadPaths": ["/opt/homebrew", "~/.nvm"]
+  },
+  "worktreePrefix": "ralph-ts",
+  "ralph": {
+    "maxIterations": 10,
+    "qualityGates": [
+      { "name": "typecheck", "cmd": "npx tsc --noEmit" },
+      { "name": "test", "cmd": "npm test" }
+    ],
+    "commitOnPass": true
+  }
+}

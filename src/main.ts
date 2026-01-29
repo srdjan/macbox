@@ -14,6 +14,7 @@ import { flowCmd } from "./flow_cmd.ts";
 import { contextCmd } from "./context_cmd.ts";
 import { startCmd } from "./start.ts";
 import { authCmd } from "./auth_cmd.ts";
+import { ralphCmd } from "./ralph_cmd.ts";
 import { printHelp } from "./usage.ts";
 
 export type Exit = { readonly code: number };
@@ -55,6 +56,8 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
       return await flowCmd(rest);
     case "context":
       return await contextCmd(rest);
+    case "ralph":
+      return await ralphCmd(rest);
     case "start":
       return await startCmd(rest);
     case "claude":

@@ -9,6 +9,14 @@ export type PresetCapabilities = {
   readonly extraWritePaths?: ReadonlyArray<string>;
 };
 
+export type PresetRalphConfig = {
+  readonly maxIterations?: number;
+  readonly qualityGates?: ReadonlyArray<{ readonly name: string; readonly cmd: string; readonly continueOnFail?: boolean }>;
+  readonly delayBetweenIterationsMs?: number;
+  readonly commitOnPass?: boolean;
+  readonly promptTemplate?: string;
+};
+
 export type Preset = {
   readonly name: string;
   readonly description?: string;
@@ -21,6 +29,7 @@ export type Preset = {
   readonly env?: Readonly<Record<string, string>>;
   readonly worktreePrefix?: string;
   readonly startPoint?: string;
+  readonly ralph?: PresetRalphConfig;
 };
 
 export type LoadedPreset = {
@@ -168,6 +177,28 @@ const validatePreset = (raw: unknown, nameHint: string): Preset => {
   const startPoint =
     typeof o.startPoint === "string" ? o.startPoint : undefined;
 
+  const ralph = (() => {
+    if (o.ralph === null || typeof o.ralph !== "object") return undefined;
+    const r = o.ralph as Record<string, unknown>;
+    const gates = Array.isArray(r.qualityGates)
+      ? (r.qualityGates as unknown[]).filter(
+          (g): g is Record<string, unknown> =>
+            !!g && typeof g === "object" && typeof (g as Record<string, unknown>).name === "string" && typeof (g as Record<string, unknown>).cmd === "string",
+        ).map((g) => ({
+          name: g.name as string,
+          cmd: g.cmd as string,
+          continueOnFail: typeof g.continueOnFail === "boolean" ? g.continueOnFail : undefined,
+        }))
+      : undefined;
+    return {
+      maxIterations: typeof r.maxIterations === "number" ? r.maxIterations : undefined,
+      qualityGates: gates,
+      delayBetweenIterationsMs: typeof r.delayBetweenIterationsMs === "number" ? r.delayBetweenIterationsMs : undefined,
+      commitOnPass: typeof r.commitOnPass === "boolean" ? r.commitOnPass : undefined,
+      promptTemplate: typeof r.promptTemplate === "string" ? r.promptTemplate : undefined,
+    } as PresetRalphConfig;
+  })();
+
   return {
     name,
     description,
@@ -180,6 +211,7 @@ const validatePreset = (raw: unknown, nameHint: string): Preset => {
     env,
     worktreePrefix,
     startPoint,
+    ralph,
   };
 };
 

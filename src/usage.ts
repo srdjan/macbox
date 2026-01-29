@@ -69,6 +69,12 @@ Usage:
   macbox workspace archive <id> [--base <path>]
   macbox workspace restore <id> [--base <path>]
 
+  macbox ralph <prompt-or-prd-path>
+               [--agent claude|codex] [--cmd <path>] [--preset <name>] [--max-iterations <N>]
+               [--gate "name:cmd"] [--no-commit] [--profile <name[,name2...]>]
+               [--worktree <name>] [--branch <start-point>] [--debug] [--trace] [--json]
+               [--repo <path>] [--base <path>]
+
   macbox flow run <name> [--workspace <id>] [--worktree <name>] [--json] [--debug] [--repo <path>] [--base <path>]
   macbox flow list [--worktree <name>] [--repo <path>] [--base <path>]
   macbox flow show <name> [--worktree <name>] [--repo <path>] [--base <path>]
@@ -109,6 +115,9 @@ Notes:
   - Flows are named step sequences defined in macbox.json at the repo root.
     Steps can be built-in (steps:shell, steps:git.*), skill-backed (skills:<name>),
     or agent-backed (steps:agent.run). Flow results are saved to .macbox/flows/.
+  - Ralph is an autonomous loop that iterates over a PRD (prd.json) or free-form prompt.
+    Each iteration spawns a sandboxed agent, runs quality gates, and commits passing work.
+    State is saved to .macbox/ralph/. Use steps:ralph.run in flows for the same behavior.
 Examples:
   macbox start
   macbox claude

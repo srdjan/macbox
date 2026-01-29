@@ -212,6 +212,7 @@ macbox ships with these presets:
 - `fullstack-typescript`: Node.js and Deno toolchains, `host-tools` profile, `NODE_ENV=development`
 - `python-ml`: Python with pip, pyenv, virtualenvs, `host-tools` profile, `PYTHONDONTWRITEBYTECODE=1`
 - `rust-dev`: Cargo and rustup toolchains, `host-tools` profile, `RUST_BACKTRACE=1`
+- `ralph-typescript`: TypeScript Ralph loop preset with typecheck and test gates, `host-tools` profile
 
 ### Create your own preset
 
@@ -257,7 +258,14 @@ Preset search order:
     "NODE_ENV": "development"
   },
   "worktreePrefix": "ai-mypreset",
-  "startPoint": "main"
+  "startPoint": "main",
+  "ralph": {
+    "maxIterations": 10,
+    "qualityGates": [
+      { "name": "typecheck", "cmd": "npx tsc --noEmit" }
+    ],
+    "commitOnPass": true
+  }
 }
 ```
 
@@ -272,6 +280,7 @@ Preset fields:
 - `env`: Environment variables to inject into the sandbox
 - `worktreePrefix`: Default worktree name prefix (e.g., `ai-mypreset` becomes `ai-mypreset-ai`)
 - `startPoint`: Default git ref for new worktrees
+- `ralph`: Optional Ralph loop configuration (see the Ralph section below)
 
 ---
 
@@ -602,6 +611,7 @@ Each step supports an optional `label` field (string) for human-readable display
 | `steps:gh.prCreate` | Create a GitHub PR | `title` (string), optional `body`, `base`, `head` |
 | `steps:gh.prMerge` | Merge a GitHub PR | `number` (integer), optional `method` |
 | `skills:<name>` | Run a named skill | optional `skillArgs` (string array) |
+| `steps:ralph.run` | Run the Ralph autonomous loop | `prd` (path or object) or `prompt` (string), optional `config` |
 
 The `steps:gh.*` types require the `gh` CLI to be installed and authenticated.
 
@@ -672,6 +682,153 @@ Hooks are step arrays defined in `macbox.json` for lifecycle points:
 - `onWorkspaceCreate` - defined in schema but **not yet invoked** by `macbox workspace new`
 - `onWorkspaceRestore` - runs after `macbox workspace restore`
 - `onFlowComplete` - defined in schema but **not yet invoked** after flow completion
+
+---
+
+## Ralph (autonomous agent loop)
+
+Ralph is an autonomous loop that iterates over a PRD (Product Requirements Document), spawning a fresh sandboxed agent per iteration, running quality gates after each, and committing passing work until all stories pass or the iteration limit is reached.
+
+### Quick start
+
+```bash
+# Free-form prompt (generates a single-story PRD)
+macbox ralph "Add a search endpoint to the API"
+
+# Multi-story PRD file
+macbox ralph prd.json --agent claude --gate "typecheck:npx tsc --noEmit" --gate "test:npm test"
+
+# Use a preset with pre-configured gates
+macbox ralph prd.json --preset ralph-typescript
+```
+
+### PRD schema (`prd.json`)
+
+```json
+{
+  "project": "my-api",
+  "description": "REST API for user management",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add /users endpoint",
+      "description": "Create a GET endpoint that returns all users",
+      "acceptanceCriteria": ["Returns JSON array", "Handles empty DB"],
+      "priority": 1,
+      "passes": false
+    },
+    {
+      "id": "US-002",
+      "title": "Add user creation",
+      "description": "Create a POST /users endpoint",
+      "acceptanceCriteria": ["Validates input", "Returns 201"],
+      "priority": 2,
+      "passes": false
+    }
+  ]
+}
+```
+
+Stories are processed in priority order (lowest number first). The `id` and `priority` fields are auto-assigned if omitted.
+
+### How it works
+
+1. Select the highest-priority incomplete story
+2. Build a prompt with story details, PRD overview, and progress from prior iterations
+3. Spawn a sandboxed agent with the prompt
+4. Run quality gates outside the sandbox (typecheck, test, lint, etc.)
+5. If all gates pass, commit the work and mark the story as passed in `prd.json`
+6. Repeat until all stories pass, the iteration limit is reached, or the agent signals completion
+
+The loop terminates for one of three reasons:
+- `all_passed`: every story's `passes` field is `true`
+- `max_iterations`: the iteration limit was reached
+- `completion_signal`: the agent output `<promise>COMPLETE</promise>`
+
+### CLI flags
+
+```
+macbox ralph <prompt-or-prd-path>
+  [--agent claude|codex]        Agent to use
+  [--cmd <path>]                Explicit agent executable path
+  [--preset <name>]             Apply a preset (merges ralph config)
+  [--max-iterations <N>]        Override max iterations (default: 10)
+  [--gate "name:cmd"]           Add a quality gate (repeatable, comma-separated)
+  [--no-commit]                 Skip git commits on passing iterations
+  [--profile <name[,name2...]>] Compose sandbox profiles
+  [--worktree <name>]           Explicit worktree name
+  [--branch <start-point>]      Git ref for the worktree
+  [--debug] [--trace] [--json]  Debugging and output flags
+  [--repo <path>] [--base <path>]
+```
+
+### Quality gates
+
+Gates are shell commands that run outside the sandbox in the worktree after each agent iteration. They only run when the agent exits successfully (code 0).
+
+```bash
+# CLI flags
+macbox ralph prd.json --gate "typecheck:npx tsc --noEmit" --gate "test:npm test"
+
+# Via preset (ralph.qualityGates in preset JSON)
+macbox ralph prd.json --preset ralph-typescript
+```
+
+A gate with `continueOnFail: true` in a preset will log the failure but continue to the next gate. Without it, the first failing gate stops the gate sequence for that iteration.
+
+### State and progress
+
+Ralph persists its state in the worktree under `.macbox/ralph/`:
+
+| File | Contents |
+|------|----------|
+| `state.json` | Full iteration history, PRD state, config (gitignored) |
+| `progress.txt` | Append-only iteration log, fed back into agent prompts (gitignored) |
+
+The PRD file (`prd.json`) is updated in-place as stories pass and committed alongside the code.
+
+### Using Ralph as a flow step
+
+Ralph is also available as `steps:ralph.run` in flows defined in `macbox.json`:
+
+```json
+{
+  "flows": {
+    "implement": {
+      "steps": [
+        {
+          "id": "ralph",
+          "type": "steps:ralph.run",
+          "args": {
+            "prd": "prd.json",
+            "config": {
+              "maxIterations": 15,
+              "qualityGates": [
+                { "name": "typecheck", "cmd": "npx tsc --noEmit" },
+                { "name": "test", "cmd": "npm test" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+Or with a free-form prompt:
+
+```json
+{ "id": "impl", "type": "steps:ralph.run", "args": { "prompt": "Add dark mode" } }
+```
+
+### Environment variables
+
+Each iteration injects these extra env vars into the agent sandbox:
+
+- `MACBOX_RALPH_ITERATION` - current iteration number
+- `MACBOX_RALPH_STORY_ID` - the story being worked on
+- `MACBOX_RALPH_MAX_ITERATIONS` - total iteration limit
 
 ---
 
