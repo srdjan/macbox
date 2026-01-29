@@ -64,7 +64,11 @@ export const runSandboxed = async (s: SandboxExec, r: SandboxRun): Promise<numbe
 
 const td = new TextDecoder();
 
-const readLimited = async (rs: ReadableStream<Uint8Array> | null, limitBytes: number) => {
+const readLimited = async (
+  rs: ReadableStream<Uint8Array> | null,
+  limitBytes: number,
+  onChunk?: (chunk: Uint8Array) => Promise<void> | void,
+) => {
   if (!rs) return { text: "", truncated: false };
   const reader = rs.getReader();
   const chunks: Uint8Array[] = [];
@@ -75,6 +79,9 @@ const readLimited = async (rs: ReadableStream<Uint8Array> | null, limitBytes: nu
       const { value, done } = await reader.read();
       if (done) break;
       if (!value) continue;
+      if (onChunk) {
+        await onChunk(value);
+      }
       if (total < limitBytes) {
         const remaining = limitBytes - total;
         if (value.byteLength <= remaining) {
@@ -110,7 +117,7 @@ const readLimited = async (rs: ReadableStream<Uint8Array> | null, limitBytes: nu
 export const runSandboxedCapture = async (
   s: SandboxExec,
   r: SandboxRun,
-  opts?: { readonly maxBytes?: number; readonly stdin?: "inherit" | "null" },
+  opts?: { readonly maxBytes?: number; readonly stdin?: "inherit" | "null"; readonly stream?: boolean },
 ): Promise<SandboxCaptured> => {
   const defs = Object.entries(r.params).flatMap(([k, v]) => [`-D${k}=${v}`]);
   const envPairs = Object.entries(r.env).map(([k, v]) => `${k}=${v}`);
@@ -136,9 +143,20 @@ export const runSandboxedCapture = async (
   }).spawn();
 
   const max = opts?.maxBytes ?? (2 * 1024 * 1024);
+  const stream = opts?.stream ?? false;
+  const streamOut = stream
+    ? async (chunk: Uint8Array) => {
+      await Deno.stdout.write(chunk);
+    }
+    : undefined;
+  const streamErr = stream
+    ? async (chunk: Uint8Array) => {
+      await Deno.stderr.write(chunk);
+    }
+    : undefined;
   const [o, e, st] = await Promise.all([
-    readLimited(child.stdout, max),
-    readLimited(child.stderr, max),
+    readLimited(child.stdout, max, streamOut),
+    readLimited(child.stderr, max, streamErr),
     child.status,
   ]);
 

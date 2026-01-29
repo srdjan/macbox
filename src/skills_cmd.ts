@@ -483,6 +483,7 @@ export const skillsCmd = async (argv: ReadonlyArray<string>) => {
     }
 
     const capture = boolFlag(a2.flags.capture, false) || jsonOut;
+    const streamOutput = capture && !jsonOut;
     let cap: Awaited<ReturnType<typeof runSandboxedCapture>> | null = null;
     let code = 1;
     try {
@@ -498,7 +499,7 @@ export const skillsCmd = async (argv: ReadonlyArray<string>) => {
         command: cmd,
       };
       if (capture) {
-        cap = await runSandboxedCapture(sx, runArgs, { stdin: "inherit" });
+        cap = await runSandboxedCapture(sx, runArgs, { stdin: "inherit", stream: streamOutput });
         code = cap.code;
       } else {
         code = await runSandboxed(sx, runArgs);
@@ -560,7 +561,7 @@ export const skillsCmd = async (argv: ReadonlyArray<string>) => {
         stderrTruncated: cap?.stderrTruncated ?? false,
       };
       console.log(JSON.stringify(envelope, null, 2));
-    } else if (capture && cap) {
+    } else if (capture && cap && !streamOutput) {
       // User asked to capture, but not JSON envelope. Print captured streams after run.
       if (cap.stdout.length) console.log(cap.stdout);
       if (cap.stderr.length) console.error(cap.stderr);

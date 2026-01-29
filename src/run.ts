@@ -201,6 +201,9 @@ export const runCmd = async (argv: ReadonlyArray<string>) => {
 
   // Build command
   const baseCmd = cmdOverride ? [cmdOverride] : [...defaultAgentCmd(agentFlag)];
+  if (agentFlag === "claude" && cmdOverride) {
+    baseCmd.push("-p", "--dangerously-skip-permissions");
+  }
   const passthrough = a.passthrough;
 
   const fullCmd = baseCmd.length > 0

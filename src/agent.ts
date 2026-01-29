@@ -4,7 +4,7 @@ export const defaultAgentCmd = (k: AgentKind): ReadonlyArray<string> => {
   switch (k) {
     case "claude":
       // Claude Code CLI typically installs as `claude`.
-      return ["claude"];
+      return ["claude", "-p", "--dangerously-skip-permissions"];
     case "codex":
       // Codex CLI typically installs as `codex`.
       return ["codex"];

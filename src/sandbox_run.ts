@@ -27,6 +27,7 @@ export type SandboxRunRequest = {
   readonly env?: Record<string, string>;
   readonly debug?: boolean;
   readonly capture?: boolean;
+  readonly stream?: boolean;
 };
 
 export type SandboxRunResult = {
@@ -115,7 +116,7 @@ export const executeSandboxRun = async (
       workdir: wtPath,
       env,
       command: [...req.command],
-    });
+    }, { stream: req.stream ?? true });
     return {
       code: result.code,
       stdout: result.stdout,

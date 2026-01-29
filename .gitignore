@@ -5,3 +5,4 @@ deno.lock
 # local build artifacts
 *.log
 dist/macbox
+$HOME/.local/bin/macbox
