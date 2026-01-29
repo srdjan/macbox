@@ -56,6 +56,36 @@ You can override profile search with `MACBOX_PROFILES_DIR=/path/to/profiles`.
 macbox --help
 ```
 
+### Authenticate your agent
+
+Before running an agent in the sandbox, set up its credentials on the host:
+
+```bash
+# Claude
+macbox authenticate --agent claude
+
+# Codex
+macbox authenticate --agent codex
+```
+
+This runs the agent's own authentication flow outside the sandbox so your
+API token is stored on the host. For Claude, it executes `claude setup-token`;
+for Codex, it launches the Codex auth flow directly.
+
+If the agent binary is not on your PATH, point to it explicitly:
+
+```bash
+macbox authenticate --agent claude --cmd /opt/homebrew/bin/claude
+```
+
+You can also pass through extra arguments to the agent's auth command:
+
+```bash
+macbox authenticate --agent claude -- --extra-flag
+```
+
+The short form `macbox auth` works as well.
+
 ---
 
 ## Mental model
@@ -225,6 +255,25 @@ macbox attach latest --repo .
 # Attach by explicit id (shown in sessions list)
 macbox attach <repoId/worktreeName>
 ```
+
+### `macbox authenticate` (alias: `macbox auth`)
+
+Set up agent credentials on the host (outside the sandbox).
+
+```bash
+macbox authenticate --agent claude
+macbox authenticate --agent codex
+
+# Custom agent binary location
+macbox authenticate --agent claude --cmd /opt/homebrew/bin/claude
+
+# Pass extra args to the agent's auth command
+macbox authenticate --agent claude -- --extra-flag
+```
+
+For Claude, this runs `claude setup-token`. For Codex, it runs the Codex
+binary directly to trigger its auth flow. You typically run this once after
+installing an agent.
 
 ---
 
@@ -1325,11 +1374,17 @@ That’s usually the sandbox boundary doing its job. Fix options:
 - debug: re-run with `--trace` and inspect
   `<worktree>/.macbox/logs/sandbox-violations.log`
 
-### “My agent can’t find its executable”
+### "My agent can't authenticate / API key not found"
+
+Run `macbox authenticate --agent claude` (or `codex`) on the host first. This
+stores the token outside the sandbox. If the agent binary is not on your PATH,
+use `--cmd /path/to/agent`.
+
+### "My agent can't find its executable"
 
 Either:
 
-- install it so it’s on your PATH when you run macbox, or
+- install it so it's on your PATH when you run macbox, or
 - provide an explicit path: `macbox run --cmd /opt/homebrew/bin/claude ...`
 
 ### “I need git push / SSH keys”
