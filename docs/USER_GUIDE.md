@@ -16,6 +16,48 @@ defined in `macbox.json`, and context packs for reproducible state snapshots.
 
 ---
 
+## Installation
+
+### Requirements
+
+- macOS
+- `git`
+- `/usr/bin/sandbox-exec` (macOS Seatbelt launcher, present on current macOS releases)
+
+### Install from release
+
+```bash
+curl -fsSL https://github.com/srdjan/macbox/releases/latest/download/install.sh | bash
+```
+
+Or install manually:
+
+```bash
+# Download binary and profiles
+curl -fsSL -o /tmp/macbox https://github.com/srdjan/macbox/releases/latest/download/macbox
+curl -fsSL -o /tmp/profiles.tar.gz https://github.com/srdjan/macbox/releases/latest/download/profiles.tar.gz
+
+# Install to /usr/local (requires sudo)
+sudo install -m 755 /tmp/macbox /usr/local/bin/macbox
+sudo mkdir -p /usr/local/share/macbox
+sudo tar -xzf /tmp/profiles.tar.gz -C /usr/local/share/macbox
+
+# Or install to ~/.local (no sudo)
+install -m 755 /tmp/macbox ~/.local/bin/macbox
+mkdir -p ~/.local/share/macbox
+tar -xzf /tmp/profiles.tar.gz -C ~/.local/share/macbox
+```
+
+You can override profile search with `MACBOX_PROFILES_DIR=/path/to/profiles`.
+
+### Verify installation
+
+```bash
+macbox --help
+```
+
+---
+
 ## Mental model
 
 Think of your repo as the **main house**.
@@ -23,63 +65,43 @@ Think of your repo as the **main house**.
 A macbox worktree is a **guest house** (separate directory), and the Seatbelt
 sandbox is the **lock on the guest house door**:
 
-- ✅ the agent can rearrange furniture inside the guest house (edit files,
+- the agent can rearrange furniture inside the guest house (edit files,
   install deps, build, test)
-- 🔒 the agent can’t wander into your real home directory (`~/.ssh`,
+- the agent can't wander into your real home directory (`~/.ssh`,
   `~/Documents`, `~/Library`, etc.) unless you _explicitly_ allow it
-
----
-
-## Requirements
-
-- macOS
-- `git`
-- `/usr/bin/sandbox-exec` (macOS Seatbelt launcher)
 
 ---
 
 ## Quickstart
 
-From inside the `macbox/` folder:
-
 ```bash
 # show help
-deno task dev -- --help
+macbox --help
 
 # run Claude Code in a sandboxed worktree (defaults to ai-claude)
-deno task dev -- run --agent claude -- --help
+macbox run --agent claude -- --help
 
 # open an interactive shell in the same sandbox
-deno task dev -- shell --agent claude
+macbox shell --agent claude
 
 # run Codex in its own sandbox worktree
-deno task dev -- run --agent codex --worktree ai-codex -- --help
+macbox run --agent codex --worktree ai-codex -- --help
 
 # use a preset for a complete workflow configuration
-deno task dev -- run --preset fullstack-typescript -- --help
-deno task dev -- shell --preset python-ml
+macbox run --preset fullstack-typescript -- --help
+macbox shell --preset python-ml
 
 # create a managed workspace linked to a GitHub issue
-deno task dev -- workspace new --agent claude --issue 42
+macbox workspace new --agent claude --issue 42
 
 # run a flow defined in macbox.json
-deno task dev -- flow run build
+macbox flow run build
+
+# run Ralph autonomous loop with a PRD
+macbox ralph prd.json --preset ralph-typescript
 ```
 
-Tips:
-
-- Running macbox from outside your repo? Add `--repo /path/to/repo`.
-- Want a shorter command? Make an alias:
-
-```bash
-alias macbox='deno task dev --'
-```
-
-Then you can type:
-
-```bash
-macbox run --agent claude -- --help
-```
+Tip: running macbox from outside your repo? Add `--repo /path/to/repo`.
 
 ---
 
