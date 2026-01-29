@@ -1,29 +1,29 @@
 #!/usr/bin/env -S deno run -A
 import { parseArgs } from "./mini_args.ts";
-import { runCmd } from "./run.ts";
-import { shellCmd } from "./shell.ts";
 import { cleanCmd } from "./clean.ts";
 import { profilesCmd } from "./profiles_cmd.ts";
 import { sessionsCmd } from "./sessions_cmd.ts";
-import { attachCmd } from "./attach.ts";
 import { skillsCmd } from "./skills_cmd.ts";
 import { presetsCmd } from "./presets_cmd.ts";
 import { projectCmd } from "./project_cmd.ts";
 import { workspaceCmd } from "./workspace_cmd.ts";
 import { flowCmd } from "./flow_cmd.ts";
 import { contextCmd } from "./context_cmd.ts";
-import { startCmd } from "./start.ts";
-import { authCmd } from "./auth_cmd.ts";
-import { ralphCmd } from "./ralph_cmd.ts";
-import { printHelp } from "./usage.ts";
+import { agentCmd } from "./agent_cmd.ts";
+import { printHelp, printMinimalHelp } from "./usage.ts";
 
 export type Exit = { readonly code: number };
 
 const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   const top = parseArgs(argv);
 
-  if (top.flags.help || argv.length === 0) {
+  if (top.flags["help-all"]) {
     printHelp();
+    return { code: 0 };
+  }
+
+  if (top.flags.help || argv.length === 0) {
+    printMinimalHelp();
     return { code: 0 };
   }
 
@@ -31,18 +31,16 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   const rest = argv.slice(1);
 
   switch (cmd) {
-    case "run":
-      return await runCmd(rest);
-    case "shell":
-      return await shellCmd(rest);
+    case "claude":
+      return await agentCmd("claude", rest);
+    case "codex":
+      return await agentCmd("codex", rest);
     case "clean":
       return await cleanCmd(rest);
     case "profiles":
       return await profilesCmd(rest);
     case "sessions":
       return await sessionsCmd(rest);
-    case "attach":
-      return await attachCmd(rest);
     case "skills":
       return await skillsCmd(rest);
     case "presets":
@@ -56,20 +54,9 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
       return await flowCmd(rest);
     case "context":
       return await contextCmd(rest);
-    case "ralph":
-      return await ralphCmd(rest);
-    case "start":
-      return await startCmd(rest);
-    case "claude":
-      return await startCmd(["--agent", "claude", ...rest]);
-    case "codex":
-      return await startCmd(["--agent", "codex", ...rest]);
-    case "authenticate":
-    case "auth":
-      return await authCmd(rest);
     case "help":
     default:
-      printHelp();
+      printMinimalHelp();
       return { code: cmd === "help" ? 0 : 2 };
   }
 };

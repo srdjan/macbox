@@ -95,7 +95,7 @@ export const ralphCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
 
   const agentFlag: AgentKind = agent ?? "custom";
   const baseCmd = cmdOverride ? [cmdOverride] : undefined;
-  if (cmdOverride && agentFlag === "claude") {
+  if (baseCmd && agentFlag === "claude") {
     baseCmd.push("-p", "--dangerously-skip-permissions");
   }
 

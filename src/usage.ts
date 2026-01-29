@@ -1,33 +1,44 @@
-export const printHelp = () => {
+export const printMinimalHelp = () => {
   const s = `
-macbox — run AI agents in a native macOS sandbox (Seatbelt) using git worktrees
+macbox - run AI agents in a native macOS sandbox
 
 Usage:
-  macbox start [--agent claude|codex] [--preset <name>] [--profile <name[,name2...]>] [--prompt <text>]
-               [--allow-network|--block-network] [--allow-exec|--block-exec]
-               [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>] [--debug] [--trace]
-               [--repo <path>] [--base <path>] -- <agent args...>
+  macbox claude [--preset <name>] [--prompt <text>] [--ralph <prd-path>] [-- <agent args...>]
+  macbox codex  [--preset <name>] [--prompt <text>] [--ralph <prd-path>] [-- <agent args...>]
 
-  # Aliases
+Examples:
   macbox claude
-  macbox codex
+  macbox claude --prompt "fix the build"
+  macbox codex --preset fullstack-typescript
+  macbox claude --ralph prd.json
 
-  macbox run   [--agent claude|codex] [--cmd <path>] [--worktree <name>] [--branch <branch>]
-               [--preset <name>] [--profile <name[,name2...]>] [--prompt <text>]
-               [--allow-network|--block-network] [--allow-exec|--block-exec]
-               [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>] [--debug] [--trace]
-               [--session <latest|worktreeName|repoId/worktreeName>] [--repo <path>] [--base <path>] -- <agent args...>
+  macbox --help-all    show all commands (presets, profiles, sessions, ...)
+`;
+  console.log(s.trim());
+};
 
-  macbox shell [--agent claude|codex] [--worktree <name>] [--preset <name>]
-               [--profile <name[,name2...]>] [--allow-network|--block-network] [--allow-exec|--block-exec]
-               [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>] [--debug] [--trace]
-               [--session <latest|worktreeName|repoId/worktreeName>] [--repo <path>] [--base <path>] -- <shell args...>
+export const printHelp = () => {
+  const s = `
+macbox - run AI agents in a native macOS sandbox (Seatbelt) using git worktrees
 
-  macbox attach <repoId/worktreeName | latest>
-               [--profile <name[,name2...]>] [--allow-network|--block-network] [--allow-exec|--block-exec]
-               [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>] [--debug] [--trace]
-               [--base <path>] -- <shell args...>
+Usage:
+  macbox claude [--preset <name>] [--prompt <text>] [--ralph <prd-path>] [-- <agent args...>]
+  macbox codex  [--preset <name>] [--prompt <text>] [--ralph <prd-path>] [-- <agent args...>]
 
+  Authentication is automatic on first use.
+  Everything after -- is passed directly to the agent.
+
+  --ralph accepts a path to prd.json or a free-form prompt string.
+  When --ralph is set, additional flags apply: --gate, --max-iterations, --no-commit.
+
+  Advanced flags (not shown in basic help):
+    [--profile <name[,name2...]>] [--worktree <name>] [--branch <branch>]
+    [--cmd <path>] [--session <latest|worktreeName|repoId/worktreeName>]
+    [--allow-network|--block-network] [--allow-exec|--block-exec]
+    [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>]
+    [--debug] [--trace] [--json] [--repo <path>] [--base <path>]
+
+Management commands:
   macbox skills list [--json] [--worktree <name>] [--session <ref>] [--repo <path>] [--base <path>]
   macbox skills describe <name> [--json] [--worktree <name>] [--session <ref>] [--repo <path>] [--base <path>]
   macbox skills registry [--json] [--write] [--committed] [--worktree <name>] [--session <ref>] [--repo <path>] [--base <path>]
@@ -69,12 +80,6 @@ Usage:
   macbox workspace archive <id> [--base <path>]
   macbox workspace restore <id> [--base <path>]
 
-  macbox ralph <prompt-or-prd-path>
-               [--agent claude|codex] [--cmd <path>] [--preset <name>] [--max-iterations <N>]
-               [--gate "name:cmd"] [--no-commit] [--profile <name[,name2...]>]
-               [--worktree <name>] [--branch <start-point>] [--debug] [--trace] [--json]
-               [--repo <path>] [--base <path>]
-
   macbox flow run <name> [--workspace <id>] [--worktree <name>] [--json] [--debug] [--repo <path>] [--base <path>]
   macbox flow list [--worktree <name>] [--repo <path>] [--base <path>]
   macbox flow show <name> [--worktree <name>] [--repo <path>] [--base <path>]
@@ -83,68 +88,43 @@ Usage:
   macbox context show <packId> [--workspace <id>] [--worktree <name>] [--repo <path>] [--base <path>]
   macbox context list [--workspace <id>] [--worktree <name>] [--repo <path>] [--base <path>]
 
-  macbox authenticate --agent claude|codex [--cmd <path>] -- <agent auth args...>
-
 Notes:
-  • Sessions are persisted under: <base>/sessions/<repoId>/<worktree>.json
-    Use 'macbox attach <id>' to re-open a saved sandbox with the same defaults.
-  • Passing --agent automatically composes a bundled profile (agent-claude or agent-codex).
-    For 'shell', if --worktree is omitted, macbox uses ai-<agent> (e.g., ai-claude).
-    You can still add more with --profile, and everything is additive.
-  • For Codex, macbox sets CODEX_HOME inside the sandbox HOME to keep ~/.codex off the host.
-
-  • Presets bundle agent, profiles, capabilities, and environment into reusable configurations.
-    Use --preset <name> with run/shell to apply a preset. CLI flags override preset defaults.
-    Built-in presets: fullstack-typescript, python-ml, rust-dev
-    User presets live under: ~/.config/macbox/presets/*.json
-
+  - Authentication is automatic: macbox checks for credentials on first use
+    and runs the agent's setup flow if needed.
+  - Bundled profiles (agent-claude, agent-codex) are auto-applied.
+  - Presets bundle agent, profiles, capabilities, and environment.
+    Built-in presets: fullstack-typescript, python-ml, rust-dev, ralph-typescript
+    User presets: ~/.config/macbox/presets/*.json
   - Uses /usr/bin/sandbox-exec to apply a Seatbelt sandbox profile.
   - --trace writes sandbox denial logs to: <worktree>/.macbox/logs/sandbox-violations.log
   - --profile composes additional read/write allowlists into the sandbox profile.
-    Built-ins live under: <repo>/profiles/*.json
-    User profiles live under: ~/.config/macbox/profiles/*.json
+    Built-ins: <repo>/profiles/*.json
+    User profiles: ~/.config/macbox/profiles/*.json
   - Creates worktrees under: <base>/worktrees/<repoId>/<worktree>
   - Agent HOME/caches/tmp live under: <worktree>/.macbox/
-
   - Projects register repos for multi-repo awareness.
-    Registry lives at: ~/.config/macbox/projects.json
+    Registry: ~/.config/macbox/projects.json
   - Workspaces wrap a (project, worktree, session) into a managed lifecycle.
-    Use 'macbox workspace new' to create, 'macbox workspace archive' to freeze.
-    Workspaces live under: <base>/workspaces/<projectId>/<workspaceId>.json
     Alias: 'macbox ws' is shorthand for 'macbox workspace'.
   - Flows are named step sequences defined in macbox.json at the repo root.
-    Steps can be built-in (steps:shell, steps:git.*), skill-backed (skills:<name>),
-    or agent-backed (steps:agent.run). Flow results are saved to .macbox/flows/.
-  - Ralph is an autonomous loop that iterates over a PRD (prd.json) or free-form prompt.
-    Each iteration spawns a sandboxed agent, runs quality gates, and commits passing work.
-    State is saved to .macbox/ralph/. Use steps:ralph.run in flows for the same behavior.
-Examples:
-  macbox start
-  macbox claude
-  macbox start --preset fullstack-typescript
-  deno run -A src/main.ts run --agent claude -- --help
-  deno run -A src/main.ts run --agent claude --trace -- --help
-  deno run -A src/main.ts run --agent claude --profile host-tools -- --help
-  deno run -A src/main.ts run --preset fullstack-typescript -- --help
-  deno run -A src/main.ts shell --preset python-ml
-  deno run -A src/main.ts presets list
-  deno run -A src/main.ts presets show fullstack-typescript
-  deno run -A src/main.ts presets create my-preset --template fullstack-typescript
-  deno run -A src/main.ts profiles list
-  deno run -A src/main.ts profiles show host-tools
-  deno run -A src/main.ts run --agent codex --worktree ai-codex -- --help
-  deno run -A src/main.ts shell --worktree ai -- /bin/zsh -l
-  deno run -A src/main.ts shell --worktree ai --trace -- /bin/zsh -l
-  deno run -A src/main.ts skills list --worktree ai
-  deno run -A src/main.ts skills init fmt --worktree ai
-  deno run -A src/main.ts skills run fmt --worktree ai -- --help
-  deno run -A src/main.ts clean --worktree ai
-  deno run -A src/main.ts project add
-  deno run -A src/main.ts project list
-  deno run -A src/main.ts workspace new --agent claude --issue 42
-  deno run -A src/main.ts workspace list
-  deno run -A src/main.ts ws list --archived
+  - Ralph is an autonomous loop over a PRD. Use --ralph <prd.json> or --ralph "prompt".
+    State is saved to .macbox/ralph/.
 
+Examples:
+  macbox claude
+  macbox claude --prompt "refactor the auth module"
+  macbox codex --preset fullstack-typescript
+  macbox claude --ralph prd.json --gate "test:npm test"
+  macbox claude --ralph "Add a search endpoint"
+  macbox claude --preset fullstack-typescript -- -p "fix the build"
+  macbox presets list
+  macbox presets show fullstack-typescript
+  macbox profiles list
+  macbox sessions list --repo .
+  macbox clean --worktree ai-claude-1
+  macbox workspace new --agent claude --issue 42
+  macbox workspace list
+  macbox flow run build
 `;
   console.log(s.trim());
 };

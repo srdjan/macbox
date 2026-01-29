@@ -53,40 +53,58 @@ You can override profile search with `MACBOX_PROFILES_DIR=/path/to/profiles`.
 ### Run an agent in a sandbox
 
 ```bash
-# Use default worktree name "ai" (reused if already created)
-macbox run --agent claude -- --help
+# Launch Claude - auto-creates worktree, auto-authenticates, applies sandbox
+macbox claude
 
-# Create a named worktree
-macbox run --agent codex --worktree ai-codex -- --help
+# Launch Codex
+macbox codex
 
-# Create a worktree from a specific branch or ref
-macbox run --agent claude --branch feature/login -- --help
+# With a prompt
+macbox claude --prompt "fix the build"
 
-# Override the executable (if your agent is not on PATH as `claude` / `codex`)
-macbox run --cmd /opt/homebrew/bin/claude --worktree ai1 -- --help
+# With a preset for a complete workflow configuration
+macbox claude --preset fullstack-typescript
 
-# Compose additional profiles into the sandbox
-macbox run --agent claude --profile host-tools -- --help
-macbox run --agent claude --profile host-tools,host-ssh -- --help
-
-# Collect sandbox denial logs
-macbox run --agent claude --trace -- --help
+# Pass flags through to the agent after --
+macbox claude -- -p "refactor the auth module"
 ```
 
-### Interactive shell in the sandbox
+Authentication is automatic: macbox checks for credentials on first use and
+runs the agent's setup flow if needed.
+
+### Run Ralph autonomous loop
 
 ```bash
-# Warm shell: auto-applies agent profile and defaults worktree to ai-<agent>
-macbox shell --agent claude
+# Free-form prompt (generates a single-story PRD)
+macbox claude --ralph "Add a search endpoint to the API"
 
-# Explicit worktree name + explicit shell
-macbox shell --worktree ai -- /bin/zsh -l
+# Multi-story PRD file with quality gates
+macbox claude --ralph prd.json --gate "typecheck:npx tsc --noEmit" --gate "test:npm test"
 
-# With a profile
-macbox shell --worktree ai --profile host-tools -- /bin/zsh -l
+# Use a preset with pre-configured gates
+macbox claude --ralph prd.json --preset ralph-typescript
+```
+
+### Advanced flags
+
+All advanced flags are accepted but hidden from primary help. Use `macbox --help-all` to see the full reference.
+
+```bash
+# Named worktree
+macbox claude --worktree my-feature
 
 # From a specific branch
-macbox shell --agent claude --branch feature/login
+macbox claude --branch feature/login
+
+# Custom executable (if your agent isn't on PATH)
+macbox claude --cmd /opt/homebrew/bin/claude
+
+# Compose additional profiles into the sandbox
+macbox claude --profile host-tools
+macbox claude --profile host-tools,host-ssh
+
+# Collect sandbox denial logs
+macbox claude --trace
 ```
 
 ### Clean up worktrees
@@ -137,13 +155,13 @@ Examples:
 
 ```bash
 # Disable network
-macbox run --agent claude --block-network -- --help
+macbox claude --block-network
 
 # Add read-only host toolchain paths
-macbox run --agent codex --allow-fs-read=/usr/local,/opt/homebrew -- --help
+macbox codex --allow-fs-read=/usr/local,/opt/homebrew
 
 # Add a writable scratch path (discouraged)
-macbox run --agent claude --allow-fs-rw=/tmp/my-scratch -- --help
+macbox claude --allow-fs-rw=/tmp/my-scratch
 ```
 
 ---
@@ -174,7 +192,7 @@ macbox profiles show agent-claude
 
 ### Bundled agent profiles
 
-macbox ships bundled profiles that are auto-applied when you pass `--agent`:
+macbox ships bundled profiles that are auto-applied when you use `macbox claude` or `macbox codex`:
 
 - `agent-claude`: enables Mach service lookups (so Keychain/system IPC works).
 - `agent-codex`: enables Mach service lookups. `CODEX_HOME=$HOME/.codex` is set by macbox's environment setup (`env.ts`), not by the profile itself.
@@ -196,13 +214,10 @@ macbox presets show fullstack-typescript
 
 ```bash
 # Run with a preset - applies agent, profiles, capabilities, and env vars
-macbox run --preset fullstack-typescript -- --help
-
-# Shell with a preset
-macbox shell --preset python-ml
+macbox claude --preset fullstack-typescript
 
 # CLI flags override preset defaults
-macbox run --preset fullstack-typescript --block-network -- --help
+macbox claude --preset fullstack-typescript --block-network
 ```
 
 ### Bundled presets
@@ -280,7 +295,7 @@ Preset fields:
 - `env`: Environment variables to inject into the sandbox
 - `worktreePrefix`: Default worktree name prefix (e.g., `ai-mypreset` becomes `ai-mypreset-ai`)
 - `startPoint`: Default git ref for new worktrees
-- `ralph`: Optional Ralph loop configuration (see the Ralph section below)
+- `ralph`: Optional Ralph loop configuration (see the Ralph section in the user guide)
 
 ---
 
@@ -290,7 +305,7 @@ macbox persists a **session record per repo/worktree** so you can quickly re-ope
 
 Sessions are stored under `<base>/sessions/<repoId>/<worktree>.json` (default base: `~/.local/share/macbox`).
 
-You can pass `--session` to `run`/`shell` to reuse a saved worktree and defaults.
+You can pass `--session` to reuse a saved worktree and defaults.
 
 ### List sessions
 
@@ -307,23 +322,6 @@ macbox sessions show latest            # latest session (global)
 macbox sessions show latest --repo .   # latest for this repo
 macbox sessions show <repoId/worktreeName>
 ```
-
-### Attach (re-open) a session
-
-```bash
-macbox attach latest
-macbox attach <repoId/worktreeName>
-macbox attach <repoId/worktreeName> -- /bin/zsh -l
-macbox attach <repoId/worktreeName> --trace
-
-# Override session defaults on attach
-macbox attach latest --profile host-ssh
-macbox attach latest --repo /path/to/repo
-macbox attach latest --block-network
-macbox attach latest --allow-fs-read=/opt/homebrew
-```
-
-`attach` accepts the same `--profile` and capability override flags as `run`/`shell` (`--allow-network`, `--block-network`, `--allow-exec`, `--block-exec`, `--allow-fs-read`, `--allow-fs-rw`).
 
 ### Clean/delete sessions
 
@@ -491,7 +489,7 @@ Each project entry also supports optional `defaultProfiles` (array of profile na
 
 Workspaces wrap a (project, worktree, session) triple into a managed lifecycle. Each workspace has a status (`active` or `archived`), optional issue/branch linkage, and tracks flow runs and context packs.
 
-Existing `macbox run/shell/attach` commands continue to work unchanged. Workspaces are an incremental adoption layer.
+Workspaces are an incremental adoption layer - existing commands continue to work unchanged.
 
 ### Create a workspace
 
@@ -522,10 +520,8 @@ The alias `macbox ws` is shorthand for `macbox workspace`.
 ### Open a workspace
 
 ```bash
-macbox workspace open <id>            # prints session info and attach instructions
+macbox workspace open <id>            # prints session info
 ```
-
-`workspace open` prints the workspace session ID and worktree path, along with the `macbox attach` command to run. It does not directly launch a sandbox.
 
 ### Archive and restore
 
@@ -634,27 +630,6 @@ Use `${steps.<stepId>.<path>}` syntax in any string value within step `args` to 
 
 References to nonexistent step IDs or missing output keys resolve to an empty string.
 
-Example flow using variable passing:
-
-```json
-{
-  "flows": {
-    "issue-branch": {
-      "description": "Create a branch from a GitHub issue",
-      "steps": [
-        { "id": "issue", "type": "steps:gh.issueGet", "args": { "number": 42 } },
-        { "id": "branch", "type": "steps:shell", "args": { "cmd": "git checkout -b issue-42" } },
-        { "id": "pr", "type": "steps:gh.prCreate", "args": {
-            "title": "${steps.issue.outputs.title}",
-            "body": "Resolves #42\n\n${steps.issue.outputs.body}"
-          }
-        }
-      ]
-    }
-  }
-}
-```
-
 ### Running flows
 
 ```bash
@@ -682,153 +657,6 @@ Hooks are step arrays defined in `macbox.json` for lifecycle points:
 - `onWorkspaceCreate` - defined in schema but **not yet invoked** by `macbox workspace new`
 - `onWorkspaceRestore` - runs after `macbox workspace restore`
 - `onFlowComplete` - defined in schema but **not yet invoked** after flow completion
-
----
-
-## Ralph (autonomous agent loop)
-
-Ralph is an autonomous loop that iterates over a PRD (Product Requirements Document), spawning a fresh sandboxed agent per iteration, running quality gates after each, and committing passing work until all stories pass or the iteration limit is reached.
-
-### Quick start
-
-```bash
-# Free-form prompt (generates a single-story PRD)
-macbox ralph "Add a search endpoint to the API"
-
-# Multi-story PRD file
-macbox ralph prd.json --agent claude --gate "typecheck:npx tsc --noEmit" --gate "test:npm test"
-
-# Use a preset with pre-configured gates
-macbox ralph prd.json --preset ralph-typescript
-```
-
-### PRD schema (`prd.json`)
-
-```json
-{
-  "project": "my-api",
-  "description": "REST API for user management",
-  "userStories": [
-    {
-      "id": "US-001",
-      "title": "Add /users endpoint",
-      "description": "Create a GET endpoint that returns all users",
-      "acceptanceCriteria": ["Returns JSON array", "Handles empty DB"],
-      "priority": 1,
-      "passes": false
-    },
-    {
-      "id": "US-002",
-      "title": "Add user creation",
-      "description": "Create a POST /users endpoint",
-      "acceptanceCriteria": ["Validates input", "Returns 201"],
-      "priority": 2,
-      "passes": false
-    }
-  ]
-}
-```
-
-Stories are processed in priority order (lowest number first). The `id` and `priority` fields are auto-assigned if omitted.
-
-### How it works
-
-1. Select the highest-priority incomplete story
-2. Build a prompt with story details, PRD overview, and progress from prior iterations
-3. Spawn a sandboxed agent with the prompt
-4. Run quality gates outside the sandbox (typecheck, test, lint, etc.)
-5. If all gates pass, commit the work and mark the story as passed in `prd.json`
-6. Repeat until all stories pass, the iteration limit is reached, or the agent signals completion
-
-The loop terminates for one of three reasons:
-- `all_passed`: every story's `passes` field is `true`
-- `max_iterations`: the iteration limit was reached
-- `completion_signal`: the agent output `<promise>COMPLETE</promise>`
-
-### CLI flags
-
-```
-macbox ralph <prompt-or-prd-path>
-  [--agent claude|codex]        Agent to use
-  [--cmd <path>]                Explicit agent executable path
-  [--preset <name>]             Apply a preset (merges ralph config)
-  [--max-iterations <N>]        Override max iterations (default: 10)
-  [--gate "name:cmd"]           Add a quality gate (repeatable, comma-separated)
-  [--no-commit]                 Skip git commits on passing iterations
-  [--profile <name[,name2...]>] Compose sandbox profiles
-  [--worktree <name>]           Explicit worktree name
-  [--branch <start-point>]      Git ref for the worktree
-  [--debug] [--trace] [--json]  Debugging and output flags
-  [--repo <path>] [--base <path>]
-```
-
-### Quality gates
-
-Gates are shell commands that run outside the sandbox in the worktree after each agent iteration. They only run when the agent exits successfully (code 0).
-
-```bash
-# CLI flags
-macbox ralph prd.json --gate "typecheck:npx tsc --noEmit" --gate "test:npm test"
-
-# Via preset (ralph.qualityGates in preset JSON)
-macbox ralph prd.json --preset ralph-typescript
-```
-
-A gate with `continueOnFail: true` in a preset will log the failure but continue to the next gate. Without it, the first failing gate stops the gate sequence for that iteration.
-
-### State and progress
-
-Ralph persists its state in the worktree under `.macbox/ralph/`:
-
-| File | Contents |
-|------|----------|
-| `state.json` | Full iteration history, PRD state, config (gitignored) |
-| `progress.txt` | Append-only iteration log, fed back into agent prompts (gitignored) |
-
-The PRD file (`prd.json`) is updated in-place as stories pass and committed alongside the code.
-
-### Using Ralph as a flow step
-
-Ralph is also available as `steps:ralph.run` in flows defined in `macbox.json`:
-
-```json
-{
-  "flows": {
-    "implement": {
-      "steps": [
-        {
-          "id": "ralph",
-          "type": "steps:ralph.run",
-          "args": {
-            "prd": "prd.json",
-            "config": {
-              "maxIterations": 15,
-              "qualityGates": [
-                { "name": "typecheck", "cmd": "npx tsc --noEmit" },
-                { "name": "test", "cmd": "npm test" }
-              ]
-            }
-          }
-        }
-      ]
-    }
-  }
-}
-```
-
-Or with a free-form prompt:
-
-```json
-{ "id": "impl", "type": "steps:ralph.run", "args": { "prompt": "Add dark mode" } }
-```
-
-### Environment variables
-
-Each iteration injects these extra env vars into the agent sandbox:
-
-- `MACBOX_RALPH_ITERATION` - current iteration number
-- `MACBOX_RALPH_STORY_ID` - the story being worked on
-- `MACBOX_RALPH_MAX_ITERATIONS` - total iteration limit
 
 ---
 
@@ -917,10 +745,12 @@ deno run -A src/main.ts --help
 
 ```bash
 # Run an agent
-deno run -A src/main.ts run --agent claude -- --help
+deno run -A src/main.ts claude
+deno run -A src/main.ts claude --prompt "fix the build"
+deno run -A src/main.ts codex --preset fullstack-typescript
 
-# Interactive shell
-deno run -A src/main.ts shell --agent claude
+# Ralph autonomous loop
+deno run -A src/main.ts claude --ralph prd.json
 
 # List sessions
 deno run -A src/main.ts sessions list --repo .
