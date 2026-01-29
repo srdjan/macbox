@@ -52,6 +52,11 @@ export const startCmd = async (argv: ReadonlyArray<string>) => {
     throw new Error("macbox start: --cmd requires a value (e.g., --cmd /path/to/claude)");
   }
   let cmdOverride = asString(cmdFlagRaw);
+  const promptRaw = a.flags.prompt;
+  if (promptRaw === true) {
+    throw new Error("macbox start: --prompt requires a value");
+  }
+  const prompt = asString(promptRaw);
 
   const positionalAgent = a._[0];
   const agentRaw = asString(a.flags.agent) ?? (positionalAgent && isAgent(positionalAgent) ? positionalAgent : undefined);
@@ -147,6 +152,7 @@ export const startCmd = async (argv: ReadonlyArray<string>) => {
   if (agent) runArgv.push("--agent", agent);
   if (presetName) runArgv.push("--preset", presetName);
   if (cmdOverride) runArgv.push("--cmd", cmdOverride);
+  if (prompt) runArgv.push("--prompt", prompt);
   runArgv.push("--worktree", worktreeName);
 
   const branch = asString(a.flags.branch);

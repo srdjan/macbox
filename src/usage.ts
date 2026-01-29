@@ -3,7 +3,7 @@ export const printHelp = () => {
 macbox — run AI agents in a native macOS sandbox (Seatbelt) using git worktrees
 
 Usage:
-  macbox start [--agent claude|codex] [--preset <name>] [--profile <name[,name2...]>]
+  macbox start [--agent claude|codex] [--preset <name>] [--profile <name[,name2...]>] [--prompt <text>]
                [--allow-network|--block-network] [--allow-exec|--block-exec]
                [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>] [--debug] [--trace]
                [--repo <path>] [--base <path>] -- <agent args...>
@@ -13,7 +13,7 @@ Usage:
   macbox codex
 
   macbox run   [--agent claude|codex] [--cmd <path>] [--worktree <name>] [--branch <branch>]
-               [--preset <name>] [--profile <name[,name2...]>]
+               [--preset <name>] [--profile <name[,name2...]>] [--prompt <text>]
                [--allow-network|--block-network] [--allow-exec|--block-exec]
                [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>] [--debug] [--trace]
                [--session <latest|worktreeName|repoId/worktreeName>] [--repo <path>] [--base <path>] -- <agent args...>
@@ -76,6 +76,8 @@ Usage:
   macbox context pack [--workspace <id>] [--worktree <name>] [--summary <text>] [--repo <path>] [--base <path>]
   macbox context show <packId> [--workspace <id>] [--worktree <name>] [--repo <path>] [--base <path>]
   macbox context list [--workspace <id>] [--worktree <name>] [--repo <path>] [--base <path>]
+
+  macbox authenticate --agent claude|codex [--cmd <path>] -- <agent auth args...>
 
 Notes:
   • Sessions are persisted under: <base>/sessions/<repoId>/<worktree>.json

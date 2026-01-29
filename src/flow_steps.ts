@@ -226,6 +226,16 @@ const agentRunStep: StepHandler = async (step, ctx) => {
   }
 };
 
+// Placeholder for future autonomous loop integration.
+const ralphRunStep: StepHandler = async (step, ctx) => {
+  const startedAt = isoNow();
+  return wrapError(
+    step,
+    startedAt,
+    "steps:ralph.run is not implemented yet. Use steps:agent.run or skills:<name> for now.",
+  );
+};
+
 const skillStep = async (
   skillName: string,
   step: StepDef,
@@ -356,6 +366,7 @@ const builtinHandlers: Record<string, StepHandler> = {
   "steps:gh.prGet": ghPrGetStep,
   "steps:gh.prCreate": ghPrCreateStep,
   "steps:gh.prMerge": ghPrMergeStep,
+  "steps:ralph.run": ralphRunStep,
 };
 
 export const executeStep = async (

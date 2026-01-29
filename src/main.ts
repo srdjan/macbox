@@ -13,6 +13,7 @@ import { workspaceCmd } from "./workspace_cmd.ts";
 import { flowCmd } from "./flow_cmd.ts";
 import { contextCmd } from "./context_cmd.ts";
 import { startCmd } from "./start.ts";
+import { authCmd } from "./auth_cmd.ts";
 import { printHelp } from "./usage.ts";
 
 export type Exit = { readonly code: number };
@@ -60,6 +61,9 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
       return await startCmd(["--agent", "claude", ...rest]);
     case "codex":
       return await startCmd(["--agent", "codex", ...rest]);
+    case "authenticate":
+    case "auth":
+      return await authCmd(rest);
     case "help":
     default:
       printHelp();

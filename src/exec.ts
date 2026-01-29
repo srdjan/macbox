@@ -37,3 +37,19 @@ export const mustExec = async (
   }
   return r.stdout;
 };
+
+export const runInteractive = async (
+  cmd: ReadonlyArray<string>,
+  opts?: { cwd?: string; env?: Record<string, string> },
+): Promise<number> => {
+  const child = new Deno.Command(cmd[0], {
+    args: cmd.slice(1),
+    cwd: opts?.cwd,
+    env: opts?.env,
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  }).spawn();
+  const st = await child.status;
+  return st.code;
+};

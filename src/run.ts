@@ -66,6 +66,11 @@ export const runCmd = async (argv: ReadonlyArray<string>) => {
   // Start point for new worktrees: CLI flag > preset > default
   const startPoint = asString(a.flags.branch) ?? presetConfig?.preset.startPoint ?? "HEAD";
   const profileFlag = asString(a.flags.profile);
+  const promptRaw = a.flags.prompt;
+  if (promptRaw === true) {
+    throw new Error("macbox run: --prompt requires a value");
+  }
+  const prompt = asString(promptRaw);
   const trace = boolFlag(a.flags.trace, false);
   const debug = boolFlag(a.flags.debug, false) || trace;
   const repo = await detectRepo(repoHint);
@@ -208,7 +213,10 @@ export const runCmd = async (argv: ReadonlyArray<string>) => {
 
   const fullCmd = baseCmd.length > 0
     ? [...baseCmd, ...passthrough]
-    : passthrough;
+    : [...passthrough];
+  if (prompt) {
+    fullCmd.push(prompt);
+  }
   if (fullCmd.length === 0) {
     throw new Error(
       "run: no command to execute. Provide --agent or --cmd and/or pass args after `--`.",
