@@ -53,14 +53,14 @@ You can override profile search with `MACBOX_PROFILES_DIR=/path/to/profiles`.
 ### Run an agent in a sandbox
 
 ```bash
-# Launch Claude - auto-creates worktree, auto-authenticates, applies sandbox
+# Direct prompt - Claude is the default when no subcommand is given
+macbox --prompt "fix the build"
+
+# Launch Claude interactively
 macbox claude
 
 # Launch Codex
 macbox codex
-
-# With a prompt
-macbox claude --prompt "fix the build"
 
 # With a preset for a complete workflow configuration
 macbox claude --preset fullstack-typescript
@@ -76,13 +76,13 @@ runs the agent's setup flow if needed.
 
 ```bash
 # Free-form prompt (generates a single-story PRD)
-macbox claude --ralph "Add a search endpoint to the API"
+macbox --ralph "Add a search endpoint to the API"
 
 # Multi-story PRD file with quality gates
-macbox claude --ralph prd.json --gate "typecheck:npx tsc --noEmit" --gate "test:npm test"
+macbox --ralph prd.json --gate "typecheck:npx tsc --noEmit" --gate "test:npm test"
 
 # Use a preset with pre-configured gates
-macbox claude --ralph prd.json --preset ralph-typescript
+macbox --ralph prd.json --preset ralph-typescript
 ```
 
 ### Advanced flags
@@ -744,13 +744,13 @@ deno run -A src/main.ts --help
 ### Example commands (dev mode)
 
 ```bash
-# Run an agent
-deno run -A src/main.ts claude
-deno run -A src/main.ts claude --prompt "fix the build"
+# Run an agent (no subcommand defaults to Claude)
+deno run -A src/main.ts --prompt "fix the build"
+deno run -A src/main.ts claude --preset fullstack-typescript
 deno run -A src/main.ts codex --preset fullstack-typescript
 
 # Ralph autonomous loop
-deno run -A src/main.ts claude --ralph prd.json
+deno run -A src/main.ts --ralph prd.json
 
 # List sessions
 deno run -A src/main.ts sessions list --repo .

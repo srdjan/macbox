@@ -77,21 +77,23 @@ sandbox is the **lock on the guest house door**:
 
 ## Quickstart
 
+When no subcommand is given, macbox defaults to Claude.
+
 ```bash
-# launch Claude in a sandboxed worktree
+# direct prompt (Claude is implicit)
+macbox --prompt "fix the build"
+
+# launch Claude interactively
 macbox claude
 
 # launch Codex instead
 macbox codex
 
-# pass a prompt to the agent
-macbox claude --prompt "fix the build"
-
 # use a preset for a complete workflow configuration
 macbox claude --preset fullstack-typescript
 
 # run Ralph autonomous loop with a PRD
-macbox claude --ralph prd.json
+macbox --ralph prd.json
 
 # pass flags through to the agent after --
 macbox claude -- -p "refactor the auth module"
@@ -155,18 +157,22 @@ macbox claude --base ./.macbox_state
 
 ## Core commands
 
-### `macbox claude` / `macbox codex`
+### `macbox [claude|codex]`
 
-The primary way to launch an agent. macbox auto-detects the agent binary,
-loads defaults from your project and `macbox.json`, auto-names the worktree
-(incrementing: `ai-claude`, `ai-claude-1`, ...), and launches the agent in a
-sandboxed worktree.
+The primary way to launch an agent. When no subcommand is given, macbox
+defaults to Claude. macbox auto-detects the agent binary, loads defaults from
+your project and `macbox.json`, auto-names the worktree (incrementing:
+`ai-claude`, `ai-claude-1`, ...), and launches the agent in a sandboxed
+worktree.
 
 Authentication is automatic: if credentials are missing, macbox runs the
 agent's setup flow before launching.
 
 ```bash
-# launch Claude
+# direct prompt (Claude is implicit)
+macbox --prompt "fix the build"
+
+# launch Claude interactively
 macbox claude
 
 # launch Codex
@@ -175,11 +181,8 @@ macbox codex
 # with a preset
 macbox claude --preset fullstack-typescript
 
-# with a prompt injected into the agent
-macbox claude --prompt "refactor the auth module"
-
 # run Ralph autonomous loop
-macbox claude --ralph prd.json
+macbox --ralph prd.json
 
 # pass flags through to the agent after --
 macbox claude -- -p "fix the build"
@@ -1040,13 +1043,13 @@ is particularly useful when:
 
 ```bash
 # Simple: free-form prompt generates a single-story PRD
-macbox claude --ralph "Add a search endpoint to the API"
+macbox --ralph "Add a search endpoint to the API"
 
 # Full: multi-story PRD with quality gates
-macbox claude --ralph prd.json --gate "typecheck:npx tsc --noEmit" --gate "test:npm test"
+macbox --ralph prd.json --gate "typecheck:npx tsc --noEmit" --gate "test:npm test"
 
 # Using a preset with pre-configured gates
-macbox claude --ralph prd.json --preset ralph-typescript
+macbox --ralph prd.json --preset ralph-typescript
 ```
 
 ### Writing a PRD
@@ -1332,6 +1335,6 @@ Now that you know the basics:
   a managed workspace linked to a GitHub issue
 - **Define flows**: Add a `macbox.json` to your repo root with build/test/deploy
   step sequences
-- **Run Ralph**: `macbox claude --ralph prd.json --preset ralph-typescript` to let an
+- **Run Ralph**: `macbox --ralph prd.json --preset ralph-typescript` to let an
   agent implement a full PRD autonomously with quality gates
 - **Capture context**: `macbox context pack` before archiving to preserve state
