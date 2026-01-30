@@ -133,7 +133,7 @@ export const skillsCmd = async (argv: ReadonlyArray<string>) => {
         "  macbox skills path <name> [--file <skill.json|run.ts|README.md|dir>] [--worktree <name>] [--session <ref>] [--repo <path>] [--base <path>]",
         "  macbox skills edit <name> [--file <...>] [--worktree <name>] [--session <ref>] [--repo <path>] [--base <path>]",
         "  macbox skills init <name> [--local] [--worktree <name>] [--session <ref>] [--repo <path>] [--base <path>]",
-        "  macbox skills run  <name> [--json] [--capture] [--worktree <name>] [--session <ref>] [--agent claude|codex]",
+        "  macbox skills run  <name> [--json] [--capture] [--worktree <name>] [--session <ref>]",
         "                    [--profile <name[,name2...]>] [--allow-network|--block-network] [--allow-exec|--block-exec]",
         "                    [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>] [--debug] [--trace]",
         "                    [--repo <path>] [--base <path>] -- <skill args...>",
@@ -169,16 +169,6 @@ export const skillsCmd = async (argv: ReadonlyArray<string>) => {
   const repoHint = asString(a2.flags.repo);
   const base = asString(a2.flags.base) ?? defaultBaseDir();
 
-  const agentFlagRaw = asString(a2.flags.agent);
-  const agentFlag: AgentKind | undefined = agentFlagRaw
-    ? (agentFlagRaw === "claude" || agentFlagRaw === "codex" ||
-        agentFlagRaw === "custom")
-      ? agentFlagRaw
-      : (() => {
-        throw new Error(`macbox: unknown --agent: ${agentFlagRaw}`);
-      })()
-    : undefined;
-
   const worktreeFlag = asString(a2.flags.worktree);
   const sessionRef = asString(a2.flags.session);
   const startPoint = asString(a2.flags.branch) ?? "HEAD";
@@ -195,7 +185,6 @@ export const skillsCmd = async (argv: ReadonlyArray<string>) => {
       baseDir: base,
       repoRoot: repo.root,
       ref: sessionRef,
-      agent: agentFlag && agentFlag !== "custom" ? agentFlag : undefined,
     });
     sessionRec = await loadSessionById({ baseDir: base, id: sid });
   }
@@ -204,15 +193,13 @@ export const skillsCmd = async (argv: ReadonlyArray<string>) => {
     ? await findLatestSession({
       baseDir: base,
       repoRoot: repo.root,
-      agent: (agentFlag && agentFlag !== "custom")
-        ? agentFlag
-        : (sessionRec?.agent && sessionRec.agent !== "custom"
-          ? sessionRec.agent
-          : undefined),
+      agent: (sessionRec?.agent && sessionRec.agent !== "custom")
+        ? sessionRec.agent
+        : undefined,
     })
     : null;
 
-  const effectiveAgent: AgentKind | undefined = agentFlag ?? sessionRec?.agent;
+  const effectiveAgent: AgentKind | undefined = sessionRec?.agent;
   const worktreeName = worktreeFlag ?? sessionRec?.worktreeName ??
     inferredLatest?.worktreeName ?? defaultWorktreeName(effectiveAgent);
   const wtPath = await worktreeDir(base, repo.root, worktreeName);

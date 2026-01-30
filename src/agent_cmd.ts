@@ -1,5 +1,6 @@
-// `macbox claude` and `macbox codex` unified command handler.
-// Combines start.ts auto-detection + run.ts sandbox execution + auto-auth + --ralph dispatch.
+// Agent command handler.
+// Resolves agent from preset/config/auto-detect, then runs in sandbox.
+// Requires --prompt or --ralph.
 
 import { parseArgs } from "./mini_args.ts";
 import { detectRepo, ensureWorktree } from "./git.ts";
@@ -32,7 +33,7 @@ import {
   writeSkillFiles,
 } from "./presets.ts";
 import { asString, boolFlag, parsePathList } from "./flags.ts";
-import { resolveAgentPath } from "./agent_detect.ts";
+import { detectAgents, pickDefaultAgent, resolveAgentPath } from "./agent_detect.ts";
 import { nextWorktreeName } from "./worktree_naming.ts";
 import { loadMacboxConfig } from "./flow_config.ts";
 import { findProjectByPath } from "./project.ts";
@@ -70,10 +71,9 @@ const pushFlag = (
 /** Build argv for ralphCmd from agent_cmd parsed flags. */
 const buildRalphArgv = (
   ralphTarget: string,
-  agent: AgentKind,
   a: ReturnType<typeof parseArgs>,
 ): string[] => {
-  const argv: string[] = [ralphTarget, "--agent", agent];
+  const argv: string[] = [ralphTarget];
   // Forward shared flags
   pushFlag(argv, "preset", asString(a.flags.preset));
   pushFlag(argv, "profile", asString(a.flags.profile));
@@ -96,8 +96,10 @@ const buildRalphArgv = (
   return argv;
 };
 
+const isAgent = (v: string): v is AgentKind =>
+  v === "claude" || v === "codex" || v === "custom";
+
 export const agentCmd = async (
-  agent: AgentKind,
   argv: ReadonlyArray<string>,
 ): Promise<Exit> => {
   const a = parseArgs(argv);
@@ -109,6 +111,15 @@ export const agentCmd = async (
     throw new Error("macbox: --prompt requires a value");
   }
   const prompt = asString(promptRaw);
+
+  // --- Require --prompt or --ralph ---
+  if (!ralphTarget && !prompt) {
+    throw new Error(
+      "macbox: --prompt or --ralph is required.\n" +
+      '  macbox --prompt "fix the build"\n' +
+      "  macbox --ralph prd.json",
+    );
+  }
 
   // --- Hidden flags ---
   const base = asString(a.flags.base) ?? defaultBaseDir();
@@ -126,7 +137,7 @@ export const agentCmd = async (
   const config = await loadMacboxConfig(repo.root, repo.root);
   const project = await findProjectByPath(repo.root);
 
-  let presetName = asString(a.flags.preset) ??
+  const presetName = asString(a.flags.preset) ??
     config?.defaults?.preset ?? project?.defaultPreset;
 
   let presetConfig: LoadedPreset | null = null;
@@ -148,31 +159,50 @@ export const agentCmd = async (
     }
   }
 
-  // --- Resolve agent binary path (from start.ts) ---
+  // --- Resolve agent: preset > macbox.json defaults > project > auto-detect ---
+  const agentRaw = presetConfig?.preset.agent ??
+    config?.defaults?.agent ?? project?.defaultAgent;
+  let agent: AgentKind | undefined = agentRaw && isAgent(agentRaw) ? agentRaw : undefined;
+
+  if (!agent && !cmdOverride) {
+    const detected = await detectAgents();
+    const picked = pickDefaultAgent(detected);
+    agent = picked.agent;
+  }
+
+  if (!agent && !cmdOverride) {
+    throw new Error(
+      "macbox: no agent detected. Install 'claude' or 'codex', or configure via preset/macbox.json.",
+    );
+  }
+
+  const effectiveAgent: AgentKind = agent ?? "custom";
+
+  // --- Resolve agent binary path ---
   let autoProfile: string | null = null;
   if (!cmdOverride) {
-    const resolved = await resolveAgentPath(agent);
+    const resolved = await resolveAgentPath(effectiveAgent);
     if (!resolved) {
       throw new Error(
-        `macbox: '${agent}' not found on PATH. Install it or use --cmd /path/to/${agent}.`,
+        `macbox: '${effectiveAgent}' not found on PATH. Install it or use --cmd /path/to/${effectiveAgent}.`,
       );
     }
     // Auto-detect if agent binary is under HOME and add profile
     const home = Deno.env.get("HOME") ?? "";
     if (home && resolved.startsWith(`${home}/`)) {
-      autoProfile = agent === "claude" ? "host-claude" : "host-tools";
+      autoProfile = effectiveAgent === "claude" ? "host-claude" : "host-tools";
       cmdOverride = resolved;
       console.log(`macbox: auto-enabled ${autoProfile} profile (agent under HOME)`);
     }
   }
 
   // --- Auto-authenticate ---
-  const exe = cmdOverride ?? agent;
-  await ensureAuthenticated(agent, exe);
+  const exe = cmdOverride ?? effectiveAgent;
+  await ensureAuthenticated(effectiveAgent, exe);
 
   // --- Ralph dispatch ---
   if (ralphTarget) {
-    return await ralphCmd(buildRalphArgv(ralphTarget, agent, a));
+    return await ralphCmd(buildRalphArgv(ralphTarget, a));
   }
 
   // --- Validate preset paths ---
@@ -189,7 +219,7 @@ export const agentCmd = async (
       baseDir: base,
       repoRoot: repo.root,
       ref: sessionRef,
-      agent,
+      agent: effectiveAgent,
     });
     sessionRec = await loadSessionById({ baseDir: base, id: sid });
   }
@@ -197,10 +227,10 @@ export const agentCmd = async (
   // --- Worktree naming (from start.ts: auto-increment) ---
   const worktreeFlag = asString(a.flags.worktree);
   const prefix = presetConfig?.preset.worktreePrefix ??
-    `ai-${agent}`;
+    `ai-${effectiveAgent}`;
 
   const inferredLatest = !worktreeFlag
-    ? await findLatestSession({ baseDir: base, repoRoot: repo.root, agent })
+    ? await findLatestSession({ baseDir: base, repoRoot: repo.root, agent: effectiveAgent })
     : null;
 
   const worktreeName = worktreeFlag ?? sessionRec?.worktreeName ??
@@ -239,7 +269,7 @@ export const agentCmd = async (
   await ensureGitignoreInmacbox(wtPath);
 
   // --- Load profiles ---
-  const agentProfiles = defaultAgentProfiles(agent);
+  const agentProfiles = defaultAgentProfiles(effectiveAgent);
   const profileFlag = asString(a.flags.profile);
   const defaultProfiles = [
     ...(config?.defaults?.profiles ?? []),
@@ -307,14 +337,10 @@ export const agentCmd = async (
   });
 
   // --- Build command ---
-  const hasPrompt = !!prompt;
-  const baseCmd = cmdOverride ? [cmdOverride] : [...defaultAgentCmd(agent, hasPrompt)];
-  if (agent === "claude" && cmdOverride) {
-    if (hasPrompt) {
-      baseCmd.push("-p", "--dangerously-skip-permissions");
-    } else {
-      baseCmd.push("--dangerously-skip-permissions");
-    }
+  // At this point, --prompt is guaranteed (--ralph already returned above).
+  const baseCmd = cmdOverride ? [cmdOverride] : [...defaultAgentCmd(effectiveAgent, true)];
+  if (effectiveAgent === "claude" && cmdOverride) {
+    baseCmd.push("-p", "--dangerously-skip-permissions");
   }
   const passthrough = a.passthrough;
   const fullCmd = baseCmd.length > 0
@@ -329,7 +355,7 @@ export const agentCmd = async (
 
   // --- Sandbox env ---
   const sx = await detectSandboxExec();
-  const env = sandboxEnv(wtPath, agent);
+  const env = sandboxEnv(wtPath, effectiveAgent);
   env["MACBOX_SESSION"] = `${worktreeName}-${nowCompact()}`;
   env["MACBOX_WORKTREE"] = wtPath;
   if (presetConfig?.preset.env) {
@@ -338,7 +364,7 @@ export const agentCmd = async (
   await augmentPathForHostTools(env, profileNames, Deno.env.get("HOME") ?? "");
 
   if (presetConfig?.preset.model) {
-    await writeAgentConfig(wtPath, agent, presetConfig.preset.model);
+    await writeAgentConfig(wtPath, effectiveAgent, presetConfig.preset.model);
   }
 
   if (presetConfig?.preset.skills?.length) {
@@ -346,7 +372,7 @@ export const agentCmd = async (
   }
 
   // --- Print summary ---
-  console.log(`macbox: ${agent}`);
+  console.log(`macbox: ${effectiveAgent}`);
   if (presetName) console.log(`  preset:   ${presetName}`);
   console.log(`  worktree: ${worktreeName}`);
 
@@ -363,7 +389,7 @@ export const agentCmd = async (
       worktreePath: wtPath,
       gitCommonDir: repo.gitCommonDir,
       gitDir: repo.gitDir,
-      agent,
+      agent: effectiveAgent,
       preset: presetConfig?.preset.name,
       presetSource: presetConfig?.source,
       profiles: profileNames,

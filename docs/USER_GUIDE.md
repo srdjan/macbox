@@ -1,7 +1,7 @@
 # macbox user guide
 
 macbox gives you a **native macOS sandbox workbench** for running coding agents
-(Claude Code, Codex, or any CLI) against **git worktrees**.
+against **git worktrees**.
 
 It's meant to feel like "let the agent do real work" while still keeping your
 laptop sane:
@@ -77,28 +77,22 @@ sandbox is the **lock on the guest house door**:
 
 ## Quickstart
 
-When no subcommand is given, macbox defaults to Claude.
+Every macbox invocation requires either `--prompt` or `--ralph`. The agent
+is resolved automatically from the resolution chain: preset > macbox.json
+defaults > project defaults > auto-detect.
 
 ```bash
-# launch Claude interactively (default when no subcommand is given)
-macbox
-macbox claude
-
-# direct prompt - runs in pipe mode and exits when done
+# run a prompt (agent resolved from preset/config/auto-detect)
 macbox --prompt "fix the build"
-macbox claude --prompt "refactor the auth module"
-
-# launch Codex instead
-macbox codex
 
 # use a preset for a complete workflow configuration
-macbox claude --preset fullstack-typescript
+macbox --preset fullstack-typescript --prompt "refactor the auth module"
 
 # run Ralph autonomous loop with a PRD
 macbox --ralph prd.json
 
 # pass extra flags through to the agent after --
-macbox claude -- --verbose
+macbox --prompt "refactor the auth module" -- --verbose
 
 # run a flow defined in macbox.json
 macbox flow run build
@@ -152,53 +146,45 @@ That `.macbox/` folder is **gitignored** in the worktree.
 If you want macbox's state somewhere else, set a base dir:
 
 ```bash
-macbox claude --base ./.macbox_state
+macbox --prompt "fix the build" --base ./.macbox_state
 ```
 
 ---
 
 ## Core commands
 
-### `macbox [claude|codex]`
+### `macbox --prompt "..." | --ralph ...`
 
-The primary way to launch an agent. When no subcommand is given, macbox
-defaults to Claude. macbox auto-detects the agent binary, loads defaults from
-your project and `macbox.json`, auto-names the worktree (incrementing:
-`ai-claude`, `ai-claude-1`, ...), and launches the agent in a sandboxed
-worktree.
+The primary way to launch an agent. Every invocation requires either
+`--prompt` or `--ralph`. The agent is resolved automatically through a
+resolution chain: preset > macbox.json defaults > project defaults > auto-detect.
 
-Two modes are available:
+macbox auto-detects the agent binary, loads defaults from your project and
+`macbox.json`, auto-names the worktree (incrementing: `ai-agent`,
+`ai-agent-1`, ...), and launches the agent in a sandboxed worktree.
 
-- **Interactive mode** (no `--prompt`): launches the agent's full interactive
-  TUI. This is the default when you run `macbox` or `macbox claude` without a
-  prompt.
-- **Pipe mode** (`--prompt "..."`): sends the prompt to the agent in
-  non-interactive mode. The agent processes the prompt, prints its output, and
-  exits.
+**Prompt mode** (`--prompt "..."`): sends the prompt to the agent in
+non-interactive mode. The agent processes the prompt, prints its output, and
+exits.
+
+**Ralph mode** (`--ralph ...`): runs the autonomous Ralph loop (see the
+Ralph section below).
 
 Authentication is automatic: if credentials are missing, macbox runs the
 agent's setup flow before launching.
 
 ```bash
-# launch Claude interactively (default when no subcommand is given)
-macbox
-macbox claude
-
-# direct prompt - runs in pipe mode and exits when done
+# run a prompt (agent resolved from preset/config/auto-detect)
 macbox --prompt "fix the build"
-macbox claude --prompt "refactor the auth module"
-
-# launch Codex
-macbox codex
 
 # with a preset
-macbox claude --preset fullstack-typescript
+macbox --preset fullstack-typescript --prompt "refactor the auth module"
 
 # run Ralph autonomous loop
 macbox --ralph prd.json
 
 # pass extra flags through to the agent after --
-macbox claude -- --verbose
+macbox --prompt "refactor the auth module" -- --verbose
 ```
 
 ### Advanced flags
@@ -254,7 +240,7 @@ macbox sessions show latest --repo .
 macbox sessions delete <id>
 
 # reuse the latest session defaults
-macbox claude --session latest --repo .
+macbox --session latest --repo . --prompt "continue the refactor"
 ```
 
 ---
@@ -289,12 +275,7 @@ Inside the sandbox, macbox sets:
 - `GIT_CONFIG_GLOBAL=<worktree>/.macbox/home/.gitconfig`
 - `GIT_CONFIG_SYSTEM=/dev/null`
 
-Codex also gets:
-
-- `CODEX_HOME=$HOME/.codex` (inside the sandbox)
-
-So by default you **don't** accidentally write to your host `~/.codex` or other
-personal config dirs.
+So by default you **don't** accidentally write to your host personal config dirs.
 
 ---
 
@@ -314,10 +295,10 @@ Examples:
 
 ```bash
 # offline agent
-macbox claude --block-network
+macbox --prompt "fix the build" --block-network
 
 # allow reading extra tool paths
-macbox codex --allow-fs-read=/opt/homebrew,/usr/local
+macbox --prompt "fix the build" --allow-fs-read=/opt/homebrew,/usr/local
 ```
 
 macbox will warn if you grant **write** access outside the worktree/git dirs.
@@ -347,10 +328,10 @@ macbox profiles show agent-codex
 
 ```bash
 # apply one profile
-macbox claude --profile host-tools
+macbox --prompt "fix the build" --profile host-tools
 
 # apply multiple profiles (comma-separated)
-macbox claude --profile host-tools,host-ssh
+macbox --prompt "fix the build" --profile host-tools,host-ssh
 ```
 
 ### Writing your own profile
@@ -377,7 +358,7 @@ Profile fields:
 Then:
 
 ```bash
-macbox claude --profile my-toolchain
+macbox --prompt "fix the build" --profile my-toolchain
 ```
 
 ---
@@ -405,10 +386,10 @@ macbox presets show fullstack-typescript
 
 ```bash
 # Run with a preset
-macbox claude --preset fullstack-typescript
+macbox --preset fullstack-typescript --prompt "refactor the auth module"
 
 # CLI flags always override preset defaults
-macbox claude --preset fullstack-typescript --block-network
+macbox --preset fullstack-typescript --prompt "fix the build" --block-network
 ```
 
 ### Bundled presets
@@ -548,7 +529,7 @@ So you can use a preset as a baseline and override specific settings per-run.
 When you use a preset, macbox records it in the session:
 
 ```bash
-macbox claude --preset fullstack-typescript
+macbox --preset fullstack-typescript --prompt "refactor the auth module"
 macbox sessions show latest --repo .
 # Shows: "preset": "fullstack-typescript"
 ```
@@ -576,7 +557,7 @@ When you run with `--trace`, macbox:
 Example:
 
 ```bash
-macbox claude --trace
+macbox --prompt "fix the build" --trace
 ```
 
 If something fails, open the report:
@@ -808,7 +789,7 @@ repositories. Each project is identified by a hash of its repo path (the same
 macbox project add
 
 # Register with options
-macbox project add --name my-app --repo /path/to/repo --agent claude
+macbox project add --name my-app --repo /path/to/repo
 
 # List and inspect
 macbox project list
@@ -836,16 +817,16 @@ Workspaces are opt-in - you adopt them when you need lifecycle management.
 
 ```bash
 # Basic workspace
-macbox workspace new --agent claude
+macbox workspace new
 
 # Link to an issue (worktree auto-named ws-issue-42)
-macbox workspace new --agent claude --issue 42
+macbox workspace new --issue 42
 
 # With preset and custom label
 macbox workspace new --preset fullstack-typescript --name auth-refactor
 
 # Explicit branch and worktree name
-macbox workspace new --agent claude --branch feature/login --worktree ws-login
+macbox workspace new --branch feature/login --worktree ws-login
 ```
 
 Workspace creation does all the plumbing: detects the repo, finds or creates a
@@ -919,9 +900,9 @@ flow unless `continueOnError: true` is set on that step.
     "build": {
       "description": "Install, build, and test",
       "steps": [
-        { "id": "install", "type": "steps:shell", "label": "Install deps", "args": { "cmd": "npm install" } },
-        { "id": "build", "type": "steps:shell", "args": { "cmd": "npm run build" } },
-        { "id": "test", "type": "steps:shell", "args": { "cmd": "npm test" }, "continueOnError": true }
+        { "id": "install", "type": "steps:shell", "label": "Install deps", "args": { "cmd": "deno install" } },
+        { "id": "build", "type": "steps:shell", "args": { "cmd": "deno task build" } },
+        { "id": "test", "type": "steps:shell", "args": { "cmd": "deno test -A" }, "continueOnError": true }
       ]
     },
     "merge-main": {
@@ -943,10 +924,10 @@ flow unless `continueOnError: true` is set on that step.
   },
   "hooks": {
     "onWorkspaceCreate": [
-      { "id": "deps", "type": "steps:shell", "args": { "cmd": "npm install" } }
+      { "id": "deps", "type": "steps:shell", "args": { "cmd": "deno install" } }
     ],
     "onWorkspaceRestore": [
-      { "id": "deps", "type": "steps:shell", "args": { "cmd": "npm install" } }
+      { "id": "deps", "type": "steps:shell", "args": { "cmd": "deno install" } }
     ]
   }
 }
@@ -1106,7 +1087,7 @@ is particularly useful when:
 macbox --ralph "Add a search endpoint to the API"
 
 # Full: multi-story PRD with quality gates
-macbox --ralph prd.json --gate "typecheck:npx tsc --noEmit" --gate "test:npm test"
+macbox --ralph prd.json --gate "typecheck:deno check src/main.ts" --gate "test:deno test -A"
 
 # Using a preset with pre-configured gates
 macbox --ralph prd.json --preset ralph-typescript
@@ -1182,10 +1163,10 @@ each agent iteration. They only execute when the agent exits successfully
 
 ```bash
 # Add gates via CLI flags
-macbox claude --ralph prd.json --gate "typecheck:npx tsc --noEmit" --gate "test:npm test"
+macbox --ralph prd.json --gate "typecheck:deno check src/main.ts" --gate "test:deno test -A"
 
 # Or configure them in a preset
-macbox claude --ralph prd.json --preset ralph-typescript
+macbox --ralph prd.json --preset ralph-typescript
 ```
 
 In a preset, each gate can also specify `continueOnFail: true` to log the
@@ -1263,8 +1244,8 @@ in `macbox.json`. This lets you compose Ralph with other steps:
             "config": {
               "maxIterations": 15,
               "qualityGates": [
-                { "name": "typecheck", "cmd": "npx tsc --noEmit" },
-                { "name": "test", "cmd": "npm test" }
+                { "name": "typecheck", "cmd": "deno check src/main.ts" },
+                { "name": "test", "cmd": "deno test -A" }
               ]
             }
           }
@@ -1303,8 +1284,8 @@ Presets can include a `ralph` field with default loop configuration:
   "ralph": {
     "maxIterations": 10,
     "qualityGates": [
-      { "name": "typecheck", "cmd": "npx tsc --noEmit" },
-      { "name": "test", "cmd": "npm test" }
+      { "name": "typecheck", "cmd": "deno check src/main.ts" },
+      { "name": "test", "cmd": "deno test -A" }
     ],
     "commitOnPass": true,
     "requireApprovalBeforeCommit": false,
@@ -1428,8 +1409,8 @@ In addition to the standard Ralph env vars, multi-agent iterations inject:
   "ralph": {
     "maxIterations": 10,
     "qualityGates": [
-      { "name": "typecheck", "cmd": "npx tsc --noEmit" },
-      { "name": "test", "cmd": "npm test" }
+      { "name": "typecheck", "cmd": "deno check src/main.ts" },
+      { "name": "test", "cmd": "deno test -A" }
     ],
     "commitOnPass": true,
     "multiAgent": {
@@ -1540,7 +1521,7 @@ command directly outside macbox: `claude setup-token` (for Claude).
 Either:
 
 - install it so it's on your PATH when you run macbox, or
-- provide an explicit path: `macbox claude --cmd /opt/homebrew/bin/claude`
+- provide an explicit path: `macbox --prompt "fix the build" --cmd /opt/homebrew/bin/claude`
 
 ### "I need git push / SSH keys"
 
@@ -1558,7 +1539,7 @@ Clean up and recreate:
 
 ```bash
 macbox clean --worktree ai --repo .
-macbox claude
+macbox --prompt "fix the build"
 ```
 
 ### "Can I keep skills global (outside the worktree)?"
@@ -1572,11 +1553,11 @@ boundary simple and portable.
 
 Now that you know the basics:
 
-- **Try a preset**: `macbox claude --preset fullstack-typescript` gives you a
+- **Try a preset**: `macbox --preset fullstack-typescript --prompt "refactor the auth module"` gives you a
   complete TypeScript development environment
 - **Create your own preset**: `macbox presets create my-workflow --template fullstack-typescript`
 - **Build skills**: Define repeatable sandbox tools your agents can use
-- **Use workspaces**: `macbox workspace new --agent claude --issue 42` to create
+- **Use workspaces**: `macbox workspace new --issue 42` to create
   a managed workspace linked to a GitHub issue
 - **Define flows**: Add a `macbox.json` to your repo root with build/test/deploy
   step sequences

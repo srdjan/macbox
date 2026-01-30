@@ -56,18 +56,16 @@ const workspaceNew = async (
   const profileFlag = asString(a.flags.profile);
   const startPoint = asString(a.flags.branch) ?? "HEAD";
 
-  const agentFlagRaw = asString(a.flags.agent) ?? "custom";
-  const agentFlag: AgentKind =
-    (agentFlagRaw === "claude" || agentFlagRaw === "codex" || agentFlagRaw === "custom")
-      ? agentFlagRaw
-      : (() => { throw new Error(`macbox: unknown --agent: ${agentFlagRaw}`); })();
-  const agent: AgentKind | undefined = agentFlag === "custom" ? undefined : agentFlag;
-
   // Load preset
   let presetConfig: LoadedPreset | null = null;
   if (presetName) {
     presetConfig = await loadPreset(presetName);
   }
+
+  // Resolve agent from preset (no CLI --agent flag)
+  const presetAgent = presetConfig?.preset.agent;
+  const agentFlag: AgentKind = presetAgent ?? "custom";
+  const agent: AgentKind | undefined = agentFlag === "custom" ? undefined : agentFlag;
 
   // Detect repo and find/create project
   const repo = await detectRepo(repoHint);

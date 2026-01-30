@@ -6,7 +6,6 @@ import {
   listProjects,
   removeProject,
 } from "./project.ts";
-import type { AgentKind } from "./agent.ts";
 import type { Exit } from "./main.ts";
 import { asString } from "./flags.ts";
 
@@ -34,20 +33,13 @@ const projectAdd = async (
 ): Promise<Exit> => {
   const repoHint = asString(a.flags.repo);
   const name = asString(a.flags.name);
-  const agentRaw = asString(a.flags.agent);
   const preset = asString(a.flags.preset);
-
-  const agent: AgentKind | undefined =
-    agentRaw === "claude" || agentRaw === "codex" || agentRaw === "custom"
-      ? agentRaw
-      : undefined;
 
   const repo = await detectRepo(repoHint);
 
   const entry = await addProject({
     repoPath: repo.root,
     name,
-    defaultAgent: agent,
     defaultPreset: preset,
   });
 

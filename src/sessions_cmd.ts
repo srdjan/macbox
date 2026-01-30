@@ -2,26 +2,19 @@ import { parseArgs } from "./mini_args.ts";
 import { detectRepo } from "./git.ts";
 import { defaultBaseDir } from "./paths.ts";
 import { findLatestSession, listSessions, loadSessionById, resolveSessionIdForRepo, deleteAllSessions, deleteSession } from "./sessions.ts";
-import type { AgentKind } from "./agent.ts";
 import { asString } from "./flags.ts";
 
 export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
   const a = parseArgs(argv);
   const base = asString(a.flags.base) ?? defaultBaseDir();
   const repoHint = asString(a.flags.repo);
-  const agentFlag = asString(a.flags.agent) as AgentKind | undefined;
-  const agent: AgentKind | undefined = agentFlag && (agentFlag === "claude" || agentFlag === "codex" || agentFlag === "custom")
-    ? agentFlag
-    : agentFlag
-    ? (() => { throw new Error(`macbox: unknown --agent: ${agentFlag}`); })()
-    : undefined;
 
   const [sub, ...rest] = a._;
 
   switch (sub) {
     case "list": {
       const repo = repoHint ? await detectRepo(repoHint) : null;
-      const xs = await listSessions({ baseDir: base, repoRoot: repo?.root, agent: agent && agent !== "custom" ? agent : undefined });
+      const xs = await listSessions({ baseDir: base, repoRoot: repo?.root });
       if (xs.length === 0) {
         console.log("No sessions.");
         return { code: 0 };
@@ -39,7 +32,7 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
       // If id is "latest" and repo is provided, resolve within repo; otherwise global latest.
       if (idArg === "latest") {
         const repo = repoHint ? await detectRepo(repoHint) : null;
-        const s = await findLatestSession({ baseDir: base, repoRoot: repo?.root, agent: agent && agent !== "custom" ? agent : undefined });
+        const s = await findLatestSession({ baseDir: base, repoRoot: repo?.root });
         if (!s) throw new Error("macbox: no sessions found (latest)");
         console.log(JSON.stringify(s, null, 2));
         return { code: 0 };
@@ -50,7 +43,6 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
           baseDir: base,
           repoRoot: repo.root,
           ref: idArg,
-          agent: agent && agent !== "custom" ? agent : undefined,
         });
         const s = await loadSessionById({ baseDir: base, id: resolved });
         console.log(JSON.stringify(s, null, 2));
@@ -79,7 +71,7 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
       let id = idArg;
       if (!idArg.includes("/")) {
         const repo = await detectRepo(repoHint);
-        id = await resolveSessionIdForRepo({ baseDir: base, repoRoot: repo.root, ref: idArg, agent: agent && agent !== "custom" ? agent : undefined });
+        id = await resolveSessionIdForRepo({ baseDir: base, repoRoot: repo.root, ref: idArg });
       }
       await deleteSession({ baseDir: base, id });
       console.log(`Deleted session: ${id}`);

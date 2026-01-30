@@ -83,8 +83,8 @@ export const ralphCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   const config = await loadMacboxConfig(repo.root, repo.root);
   const project = await findProjectByPath(repo.root);
 
-  // Resolve agent: CLI > preset > macbox.json defaults > project > auto-detect
-  const agentRaw = asString(a.flags.agent) ?? presetConfig?.preset.agent ??
+  // Resolve agent: preset > macbox.json defaults > project > auto-detect
+  const agentRaw = presetConfig?.preset.agent ??
     config?.defaults?.agent ?? project?.defaultAgent;
   let agent: AgentKind | undefined = agentRaw && isAgent(agentRaw) ? agentRaw : undefined;
 
@@ -98,7 +98,7 @@ export const ralphCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
 
   if (!agent && !cmdOverride) {
     throw new Error(
-      "ralph: no agent detected. Install 'claude' or 'codex', or use --agent/--preset/--cmd.",
+      "ralph: no agent detected. Install 'claude' or 'codex', or configure via preset/macbox.json.",
     );
   }
 

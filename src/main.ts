@@ -36,9 +36,11 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
 
   switch (cmd) {
     case "claude":
-      return await agentCmd("claude", rest);
     case "codex":
-      return await agentCmd("codex", rest);
+      throw new Error(
+        `macbox: '${cmd}' subcommand removed. Agent is now configured via presets or macbox.json defaults.\n` +
+        `  Use: macbox --preset <name>  or set defaults.preset in macbox.json`,
+      );
     case "clean":
       return await cleanCmd(rest);
     case "profiles":
@@ -62,7 +64,7 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
       printMinimalHelp();
       return { code: 0 };
     default:
-      return await agentCmd("claude", argv);
+      return await agentCmd(argv);
   }
 };
 

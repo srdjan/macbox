@@ -52,23 +52,18 @@ You can override profile search with `MACBOX_PROFILES_DIR=/path/to/profiles`.
 
 ### Run an agent in a sandbox
 
-```bash
-# Launch Claude interactively (default when no subcommand is given)
-macbox
-macbox claude
+Either `--prompt` or `--ralph` is required. Agent is resolved from: preset > macbox.json defaults > project defaults > auto-detect.
 
+```bash
 # Direct prompt - runs in pipe mode and exits when done
 macbox --prompt "fix the build"
-macbox claude --prompt "refactor the auth module"
-
-# Launch Codex
-macbox codex
+macbox --prompt "refactor the auth module"
 
 # With a preset for a complete workflow configuration
-macbox claude --preset fullstack-typescript
+macbox --preset fullstack-typescript --prompt "add dark mode support"
 
 # Pass extra flags through to the agent after --
-macbox claude -- --verbose
+macbox --prompt "fix the build" -- --verbose
 ```
 
 Authentication is automatic: macbox checks for credentials on first use and
@@ -81,7 +76,7 @@ runs the agent's setup flow if needed.
 macbox --ralph "Add a search endpoint to the API"
 
 # Multi-story PRD file with quality gates
-macbox --ralph prd.json --gate "typecheck:npx tsc --noEmit" --gate "test:npm test"
+macbox --ralph prd.json --gate "typecheck:deno check src/main.ts" --gate "test:deno test -A"
 
 # Use a preset with pre-configured gates
 macbox --ralph prd.json --preset ralph-typescript
@@ -93,20 +88,20 @@ All advanced flags are accepted but hidden from primary help. Use `macbox --help
 
 ```bash
 # Named worktree
-macbox claude --worktree my-feature
+macbox --prompt "fix the build" --worktree my-feature
 
 # From a specific branch
-macbox claude --branch feature/login
+macbox --prompt "fix the build" --branch feature/login
 
 # Custom executable (if your agent isn't on PATH)
-macbox claude --cmd /opt/homebrew/bin/claude
+macbox --prompt "fix the build" --cmd /opt/homebrew/bin/claude
 
 # Compose additional profiles into the sandbox
-macbox claude --profile host-tools
-macbox claude --profile host-tools,host-ssh
+macbox --prompt "fix the build" --profile host-tools
+macbox --prompt "fix the build" --profile host-tools,host-ssh
 
 # Collect sandbox denial logs
-macbox claude --trace
+macbox --prompt "fix the build" --trace
 
 # Ralph: pause/resume and human-in-the-loop
 macbox --ralph prd.json --resume --worktree ralph-ts-1
@@ -162,13 +157,13 @@ Examples:
 
 ```bash
 # Disable network
-macbox claude --block-network
+macbox --prompt "fix the build" --block-network
 
 # Add read-only host toolchain paths
-macbox codex --allow-fs-read=/usr/local,/opt/homebrew
+macbox --prompt "fix the build" --allow-fs-read=/usr/local,/opt/homebrew
 
 # Add a writable scratch path (discouraged)
-macbox claude --allow-fs-rw=/tmp/my-scratch
+macbox --prompt "fix the build" --allow-fs-rw=/tmp/my-scratch
 ```
 
 ---
@@ -199,7 +194,7 @@ macbox profiles show agent-claude
 
 ### Bundled agent profiles
 
-macbox ships bundled profiles that are auto-applied when you use `macbox claude` or `macbox codex`:
+macbox ships bundled profiles that are auto-applied based on the resolved agent:
 
 - `agent-claude`: enables Mach service lookups (so Keychain/system IPC works).
 - `agent-codex`: enables Mach service lookups. `CODEX_HOME=$HOME/.codex` is set by macbox's environment setup (`env.ts`), not by the profile itself.
@@ -221,10 +216,10 @@ macbox presets show fullstack-typescript
 
 ```bash
 # Run with a preset - applies agent, profiles, capabilities, and env vars
-macbox claude --preset fullstack-typescript
+macbox --preset fullstack-typescript --prompt "add dark mode support"
 
 # CLI flags override preset defaults
-macbox claude --preset fullstack-typescript --block-network
+macbox --preset fullstack-typescript --prompt "fix the build" --block-network
 ```
 
 ### Bundled presets
@@ -311,7 +306,7 @@ Preset search order:
   "ralph": {
     "maxIterations": 10,
     "qualityGates": [
-      { "name": "typecheck", "cmd": "npx tsc --noEmit" }
+      { "name": "typecheck", "cmd": "deno check src/main.ts" }
     ],
     "commitOnPass": true,
     "requireApprovalBeforeCommit": false,
@@ -349,7 +344,6 @@ You can pass `--session` to reuse a saved worktree and defaults.
 ```bash
 macbox sessions list
 macbox sessions list --repo .          # current repo only
-macbox sessions list --repo . --agent claude
 ```
 
 ### Show a session
@@ -403,7 +397,6 @@ The template creates `skill.json`, `run.ts`, and `README.md`.
 ```bash
 macbox skills run fmt --worktree ai
 macbox skills run fmt --worktree ai -- --help
-macbox skills run fmt --agent codex --worktree ai-codex -- --help
 macbox skills run fmt --worktree ai --trace
 
 # Capture stdout/stderr without the JSON envelope
@@ -506,7 +499,7 @@ macbox project add
 macbox project add --name my-app --repo /path/to/repo
 
 # Set project-level defaults
-macbox project add --agent claude --preset fullstack-typescript
+macbox project add --preset fullstack-typescript
 
 # List and inspect
 macbox project list
@@ -531,11 +524,11 @@ Workspaces are an incremental adoption layer - existing commands continue to wor
 ### Create a workspace
 
 ```bash
-# Create a workspace with an agent
-macbox workspace new --agent claude
+# Create a workspace
+macbox workspace new
 
 # Link to a GitHub issue (worktree auto-named ws-issue-42)
-macbox workspace new --agent claude --issue 42
+macbox workspace new --issue 42
 
 # With a preset and custom name
 macbox workspace new --preset fullstack-typescript --name feature-auth
@@ -599,7 +592,7 @@ Flows are named step sequences defined in a `macbox.json` file at the repo root.
       "steps": [
         { "id": "install", "type": "steps:shell", "label": "Install deps", "args": { "cmd": "npm install" } },
         { "id": "build", "type": "steps:shell", "args": { "cmd": "npm run build" } },
-        { "id": "test", "type": "steps:shell", "args": { "cmd": "npm test" }, "continueOnError": true }
+        { "id": "test", "type": "steps:shell", "args": { "cmd": "deno test -A" }, "continueOnError": true }
       ]
     },
     "merge-main": {
@@ -781,10 +774,9 @@ deno run -A src/main.ts --help
 ### Example commands (dev mode)
 
 ```bash
-# Run an agent (no subcommand defaults to Claude)
+# Run an agent (--prompt or --ralph is required)
 deno run -A src/main.ts --prompt "fix the build"
-deno run -A src/main.ts claude --preset fullstack-typescript
-deno run -A src/main.ts codex --preset fullstack-typescript
+deno run -A src/main.ts --preset fullstack-typescript --prompt "add dark mode"
 
 # Ralph autonomous loop
 deno run -A src/main.ts --ralph prd.json
@@ -798,7 +790,7 @@ deno run -A src/main.ts skills run fmt --worktree ai
 
 # Projects and workspaces
 deno run -A src/main.ts project add
-deno run -A src/main.ts workspace new --agent claude --issue 42
+deno run -A src/main.ts workspace new --issue 42
 deno run -A src/main.ts ws list
 
 # Flows (requires macbox.json in repo root)
