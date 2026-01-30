@@ -18,8 +18,8 @@ import { nextWorktreeName } from "./worktree_naming.ts";
 import { loadMacboxConfig } from "./flow_config.ts";
 import { findProjectByPath } from "./project.ts";
 import { runRalphLoop, resumeRalphLoop, loadPrdFromFile, promptToPrd, parseRalphConfig, requestPause, clearPause } from "./ralph.ts";
-import type { Prd, QualityGate, RalphConfig } from "./ralph_types.ts";
-import { defaultRalphConfig } from "./ralph_types.ts";
+import type { MultiAgentConfig, Prd, QualityGate, RalphConfig } from "./ralph_types.ts";
+import { defaultRalphConfig, PHASE_ORDER } from "./ralph_types.ts";
 import { loadThread } from "./ralph_thread.ts";
 import { collectSandboxViolations } from "./sandbox_trace.ts";
 import { formatLogShowTime } from "./os.ts";
@@ -59,6 +59,11 @@ export const ralphCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   const resumeFlag = boolFlag(a.flags.resume, false);
   const requireApproval = boolFlag(a.flags["require-approval"], false);
   const maxFailuresFlag = asString(a.flags["max-failures"]);
+  const multiAgentFlag = boolFlag(a.flags["multi-agent"], false);
+  const agentAFlag = asString(a.flags["agent-a"]);
+  const agentBFlag = asString(a.flags["agent-b"]);
+  const cmdAFlag = asString(a.flags["cmd-a"]);
+  const cmdBFlag = asString(a.flags["cmd-b"]);
 
   // Positional argument: prompt text or path to prd.json (optional when resuming)
   const positional = a._[0];
@@ -260,6 +265,37 @@ export const ralphCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
 
   const maxConsecutiveFailures = maxFailuresFlag ? parseInt(maxFailuresFlag, 10) : baseConfig.maxConsecutiveFailures;
 
+  // Build multi-agent config: CLI flags > preset > undefined
+  const isMultiAgentEnabled = multiAgentFlag || baseConfig.multiAgent?.enabled === true;
+  let multiAgent: MultiAgentConfig | undefined;
+  if (isMultiAgentEnabled) {
+    const agentA = (agentAFlag && isAgent(agentAFlag)) ? agentAFlag :
+      (baseConfig.multiAgent?.agentA && isAgent(String(baseConfig.multiAgent.agentA))) ? baseConfig.multiAgent.agentA as AgentKind : "claude";
+    const agentB = (agentBFlag && isAgent(agentBFlag)) ? agentBFlag :
+      (baseConfig.multiAgent?.agentB && isAgent(String(baseConfig.multiAgent.agentB))) ? baseConfig.multiAgent.agentB as AgentKind : "codex";
+
+    // Validate both agents are installed
+    const detected = await detectAgents();
+    const missingAgents: string[] = [];
+    if (agentA === "claude" && !detected.claude) missingAgents.push("claude (agent-a)");
+    if (agentA === "codex" && !detected.codex) missingAgents.push("codex (agent-a)");
+    if (agentB === "claude" && !detected.claude) missingAgents.push("claude (agent-b)");
+    if (agentB === "codex" && !detected.codex) missingAgents.push("codex (agent-b)");
+    if (missingAgents.length > 0) {
+      throw new Error(
+        `ralph: --multi-agent requires both agents to be installed. Missing: ${missingAgents.join(", ")}`,
+      );
+    }
+
+    multiAgent = {
+      enabled: true,
+      agentA,
+      agentB,
+      cmdA: cmdAFlag ?? (baseConfig.multiAgent as Record<string, unknown> | undefined)?.cmdA as string | undefined,
+      cmdB: cmdBFlag ?? (baseConfig.multiAgent as Record<string, unknown> | undefined)?.cmdB as string | undefined,
+    };
+  }
+
   const ralphConfig: RalphConfig = {
     maxIterations: maxIterations > 0 ? maxIterations : defaultRalphConfig.maxIterations,
     qualityGates,
@@ -270,11 +306,18 @@ export const ralphCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
     maxConsecutiveFailures: maxConsecutiveFailures && maxConsecutiveFailures > 0
       ? maxConsecutiveFailures
       : undefined,
+    multiAgent,
   };
 
   // Print summary
-  console.log("macbox: ralph");
-  if (agent) console.log(`  agent:          ${agent}`);
+  console.log(multiAgent ? "macbox: ralph (multi-agent)" : "macbox: ralph");
+  if (multiAgent) {
+    console.log(`  agent-a:        ${multiAgent.agentA}`);
+    console.log(`  agent-b:        ${multiAgent.agentB}`);
+    console.log(`  phases:         ${PHASE_ORDER.join(" -> ")}`);
+  } else if (agent) {
+    console.log(`  agent:          ${agent}`);
+  }
   if (presetName) console.log(`  preset:         ${presetName}`);
   console.log(`  worktree:       ${worktreeName}`);
   console.log(`  max-iterations: ${ralphConfig.maxIterations}`);

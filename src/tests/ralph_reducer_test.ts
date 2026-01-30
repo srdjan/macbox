@@ -1,13 +1,13 @@
 import { assert } from "./testutil.ts";
 import { determineNextStep } from "../ralph_reducer.ts";
-import type { RalphIntent } from "../ralph_reducer.ts";
+import type { RalphIntent, PhasePromptFn } from "../ralph_reducer.ts";
 import {
   appendEvent,
   createThread,
   mkEvent,
 } from "../ralph_thread.ts";
 import type { RalphThread } from "../ralph_thread.ts";
-import type { Prd, RalphConfig, Story } from "../ralph_types.ts";
+import type { MultiAgentPhase, Prd, RalphConfig, Story } from "../ralph_types.ts";
 import { defaultRalphConfig } from "../ralph_types.ts";
 
 // ---------------------------------------------------------------------------
@@ -387,4 +387,268 @@ Deno.test("agent output with request-input tag returns request_human_input", () 
   if (intent.kind === "request_human_input") {
     assert(intent.reason === "What API version?", "expected reason from tag");
   }
+});
+
+// ---------------------------------------------------------------------------
+// Multi-agent orchestration tests
+// ---------------------------------------------------------------------------
+
+const multiAgentConfig: RalphConfig = {
+  ...defaultRalphConfig,
+  multiAgent: { enabled: true, agentA: "claude", agentB: "codex" },
+};
+
+const multiAgentWithGates: RalphConfig = {
+  ...multiAgentConfig,
+  qualityGates: [
+    { name: "typecheck", cmd: "tsc --noEmit" },
+    { name: "test", cmd: "npm test" },
+  ],
+};
+
+const stubPhasePrompt: PhasePromptFn = (
+  _prd: Prd,
+  _story: Story,
+  _iter: number,
+  phase: MultiAgentPhase,
+  _priorOutputs: ReadonlyArray<{ phase: MultiAgentPhase; output: string }>,
+): string => `stub phase prompt for ${phase}`;
+
+Deno.test("multi-agent: thread_started returns run_agent with brainstorm phase", () => {
+  const prd = mkPrd([mkStory("US-001", 1, false)]);
+  const thread = createThread(prd, multiAgentConfig);
+  const intent = determineNextStep(thread, multiAgentConfig, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "run_agent", "expected run_agent");
+  if (intent.kind === "run_agent") {
+    assert(intent.phase === "brainstorm", `expected brainstorm, got ${intent.phase}`);
+    assert(intent.role === "agent_a", `expected agent_a, got ${intent.role}`);
+    assert(intent.agent === "claude", `expected claude, got ${intent.agent}`);
+    assert(intent.story.id === "US-001", "expected first story");
+  }
+});
+
+Deno.test("multi-agent: iteration_started returns brainstorm phase", () => {
+  const prd = mkPrd([mkStory("US-001", 1, false)]);
+  let thread = createThread(prd, multiAgentConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  const intent = determineNextStep(thread, multiAgentConfig, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "run_agent", "expected run_agent");
+  if (intent.kind === "run_agent") {
+    assert(intent.phase === "brainstorm", `expected brainstorm, got ${intent.phase}`);
+    assert(intent.agent === "claude", `expected claude, got ${intent.agent}`);
+  }
+});
+
+Deno.test("multi-agent: phase_completed brainstorm returns clarify phase", () => {
+  const prd = mkPrd([mkStory("US-001", 1, false)]);
+  let thread = createThread(prd, multiAgentConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  thread = appendEvent(thread, mkEvent("phase_completed", {
+    phase: "brainstorm", role: "agent_a", agent: "claude",
+    storyId: "US-001", iteration: 1, exitCode: 0, stdout: "ideas",
+  }));
+
+  const intent = determineNextStep(thread, multiAgentConfig, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "run_agent", "expected run_agent");
+  if (intent.kind === "run_agent") {
+    assert(intent.phase === "clarify", `expected clarify, got ${intent.phase}`);
+    assert(intent.agent === "codex", `expected codex, got ${intent.agent}`);
+    assert(intent.role === "agent_b", `expected agent_b, got ${intent.role}`);
+  }
+});
+
+Deno.test("multi-agent: phase_completed clarify returns plan phase", () => {
+  const prd = mkPrd([mkStory("US-001", 1, false)]);
+  let thread = createThread(prd, multiAgentConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "clarify", storyId: "US-001", iteration: 1, exitCode: 0 }));
+
+  const intent = determineNextStep(thread, multiAgentConfig, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "run_agent", "expected run_agent");
+  if (intent.kind === "run_agent") {
+    assert(intent.phase === "plan", `expected plan, got ${intent.phase}`);
+    assert(intent.agent === "claude", `expected claude for plan phase`);
+  }
+});
+
+Deno.test("multi-agent: phase_completed plan returns execute phase", () => {
+  const prd = mkPrd([mkStory("US-001", 1, false)]);
+  let thread = createThread(prd, multiAgentConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "clarify", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "plan", storyId: "US-001", iteration: 1, exitCode: 0 }));
+
+  const intent = determineNextStep(thread, multiAgentConfig, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "run_agent", "expected run_agent");
+  if (intent.kind === "run_agent") {
+    assert(intent.phase === "execute", `expected execute, got ${intent.phase}`);
+    assert(intent.agent === "codex", `expected codex for execute phase`);
+  }
+});
+
+Deno.test("multi-agent: phase_completed execute returns aar phase", () => {
+  const prd = mkPrd([mkStory("US-001", 1, false)]);
+  let thread = createThread(prd, multiAgentConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "clarify", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "plan", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "execute", storyId: "US-001", iteration: 1, exitCode: 0 }));
+
+  const intent = determineNextStep(thread, multiAgentConfig, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "run_agent", "expected run_agent");
+  if (intent.kind === "run_agent") {
+    assert(intent.phase === "aar", `expected aar, got ${intent.phase}`);
+    assert(intent.agent === "claude", `expected claude for aar phase`);
+  }
+});
+
+Deno.test("multi-agent: phase_completed aar returns incorporate_aar phase", () => {
+  const prd = mkPrd([mkStory("US-001", 1, false)]);
+  let thread = createThread(prd, multiAgentConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "clarify", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "plan", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "execute", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "aar", storyId: "US-001", iteration: 1, exitCode: 0 }));
+
+  const intent = determineNextStep(thread, multiAgentConfig, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "run_agent", "expected run_agent");
+  if (intent.kind === "run_agent") {
+    assert(intent.phase === "incorporate_aar", `expected incorporate_aar, got ${intent.phase}`);
+    assert(intent.agent === "codex", `expected codex for incorporate_aar phase`);
+  }
+});
+
+Deno.test("multi-agent: all phases complete with gates returns run_gate", () => {
+  const prd = mkPrd([mkStory("US-001", 1, false)]);
+  let thread = createThread(prd, multiAgentWithGates);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "clarify", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "plan", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "execute", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "aar", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "incorporate_aar", storyId: "US-001", iteration: 1, exitCode: 0 }));
+
+  const intent = determineNextStep(thread, multiAgentWithGates, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "run_gate", `expected run_gate, got ${intent.kind}`);
+  if (intent.kind === "run_gate") {
+    assert(intent.gate.name === "typecheck", "expected first gate");
+  }
+});
+
+Deno.test("multi-agent: all phases complete without gates returns commit", () => {
+  const prd = mkPrd([mkStory("US-001", 1, false)]);
+  let thread = createThread(prd, multiAgentConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "clarify", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "plan", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "execute", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "aar", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "incorporate_aar", storyId: "US-001", iteration: 1, exitCode: 0 }));
+
+  const intent = determineNextStep(thread, multiAgentConfig, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "commit", `expected commit, got ${intent.kind}`);
+});
+
+Deno.test("multi-agent: execute phase failure returns wait_delay (iteration failure)", () => {
+  const prd = mkPrd([mkStory("US-001", 1, false)]);
+  let thread = createThread(prd, multiAgentConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "clarify", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "plan", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "execute", storyId: "US-001", iteration: 1, exitCode: 1 }));
+
+  const intent = determineNextStep(thread, multiAgentConfig, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "wait_delay", `expected wait_delay for execute failure, got ${intent.kind}`);
+});
+
+Deno.test("multi-agent: advisory phase failure retries same phase", () => {
+  const prd = mkPrd([mkStory("US-001", 1, false)]);
+  let thread = createThread(prd, multiAgentConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  // First brainstorm attempt fails
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", storyId: "US-001", iteration: 1, exitCode: 1 }));
+
+  const intent = determineNextStep(thread, multiAgentConfig, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "run_agent", "expected run_agent for retry");
+  if (intent.kind === "run_agent") {
+    assert(intent.phase === "brainstorm", `expected brainstorm retry, got ${intent.phase}`);
+  }
+});
+
+Deno.test("multi-agent: advisory phase double failure skips to execute", () => {
+  const prd = mkPrd([mkStory("US-001", 1, false)]);
+  let thread = createThread(prd, multiAgentConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  // Two failed brainstorm attempts
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", storyId: "US-001", iteration: 1, exitCode: 1 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", storyId: "US-001", iteration: 1, exitCode: 1 }));
+
+  const intent = determineNextStep(thread, multiAgentConfig, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "run_agent", "expected run_agent for skip to execute");
+  if (intent.kind === "run_agent") {
+    assert(intent.phase === "execute", `expected execute after double failure, got ${intent.phase}`);
+  }
+});
+
+Deno.test("multi-agent: AAR retry then pause after second incorporate_aar", () => {
+  const prd = mkPrd([mkStory("US-001", 1, false)]);
+  let thread = createThread(prd, multiAgentConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  // First full cycle
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "clarify", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "plan", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "execute", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "aar", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "incorporate_aar", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  // Retry cycle: second AAR + incorporate
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "aar", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "incorporate_aar", storyId: "US-001", iteration: 1, exitCode: 0 }));
+
+  const intent = determineNextStep(thread, multiAgentConfig, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "request_human_input", `expected request_human_input after AAR retry, got ${intent.kind}`);
+});
+
+Deno.test("multi-agent: iteration_completed starts next story with brainstorm", () => {
+  const prd = mkPrd([mkStory("US-001", 1, false), mkStory("US-002", 2, false)]);
+  let thread = createThread(prd, multiAgentConfig);
+  thread = appendEvent(thread, mkEvent("story_passed", { storyId: "US-001" }));
+  thread = appendEvent(thread, mkEvent("iteration_completed", { iteration: 1, storyId: "US-001", allGatesPassed: true }));
+
+  const intent = determineNextStep(thread, multiAgentConfig, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "run_agent", "expected run_agent");
+  if (intent.kind === "run_agent") {
+    assert(intent.story.id === "US-002", `expected US-002, got ${intent.story.id}`);
+    assert(intent.phase === "brainstorm", `expected brainstorm, got ${intent.phase}`);
+  }
+});
+
+Deno.test("multi-agent: disabled config follows single-agent path unchanged", () => {
+  // Config without multiAgent - should behave exactly like before
+  const prd = mkPrd([mkStory("US-001", 1, false)]);
+  const thread = createThread(prd, testConfig);
+  const intent = determineNextStep(thread, testConfig, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "run_agent", "expected run_agent");
+  if (intent.kind === "run_agent") {
+    assert(intent.phase === undefined, "expected no phase in single-agent mode");
+    assert(intent.agent === undefined, "expected no agent override in single-agent mode");
+  }
+});
+
+Deno.test("multi-agent: phase_started returns wait_delay", () => {
+  const prd = mkPrd([mkStory("US-001", 1, false)]);
+  let thread = createThread(prd, multiAgentConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  thread = appendEvent(thread, mkEvent("phase_started", { phase: "brainstorm", role: "agent_a", agent: "claude", storyId: "US-001", iteration: 1 }));
+
+  const intent = determineNextStep(thread, multiAgentConfig, stubPrompt, stubPhasePrompt);
+  assert(intent.kind === "wait_delay", `expected wait_delay for phase_started, got ${intent.kind}`);
 });

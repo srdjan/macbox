@@ -1,0 +1,24 @@
+{
+  "name": "ralph-multi-agent",
+  "description": "Claude + Codex multi-agent Ralph loop",
+  "profiles": ["host-tools"],
+  "capabilities": {
+    "network": true,
+    "exec": true,
+    "extraReadPaths": ["/opt/homebrew", "~/.nvm"]
+  },
+  "worktreePrefix": "ralph-multi",
+  "ralph": {
+    "maxIterations": 10,
+    "qualityGates": [
+      { "name": "typecheck", "cmd": "npx tsc --noEmit" },
+      { "name": "test", "cmd": "npm test" }
+    ],
+    "commitOnPass": true,
+    "multiAgent": {
+      "enabled": true,
+      "agentA": "claude",
+      "agentB": "codex"
+    }
+  }
+}

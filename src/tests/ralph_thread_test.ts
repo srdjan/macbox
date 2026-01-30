@@ -14,6 +14,10 @@ import {
   detectHumanInputRequest,
   lastEvent,
   lastEventOfType,
+  currentIterationPhases,
+  lastCompletedPhase,
+  nextPhase,
+  phaseCompletionCount,
 } from "../ralph_thread.ts";
 import type { RalphThread } from "../ralph_thread.ts";
 import type { Prd, RalphConfig, Story } from "../ralph_types.ts";
@@ -282,4 +286,108 @@ Deno.test("lastEventOfType finds correct event", () => {
   thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 2 }));
   const found = lastEventOfType(thread, "iteration_started");
   assert(found?.data.iteration === 2, "expected iteration 2");
+});
+
+// ---------------------------------------------------------------------------
+// Multi-agent query helpers
+// ---------------------------------------------------------------------------
+
+Deno.test("currentIterationPhases returns empty for fresh thread", () => {
+  const thread = createThread(mkPrd([mkStory("US-001", 1, false)]), testConfig);
+  assert(currentIterationPhases(thread).length === 0, "expected empty");
+});
+
+Deno.test("currentIterationPhases returns phase_completed events from current iteration", () => {
+  let thread = createThread(mkPrd([mkStory("US-001", 1, false)]), testConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  thread = appendEvent(thread, mkEvent("phase_started", { phase: "brainstorm", role: "agent_a", agent: "claude", storyId: "US-001", iteration: 1 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", role: "agent_a", agent: "claude", storyId: "US-001", iteration: 1, exitCode: 0, stdout: "ideas" }));
+  thread = appendEvent(thread, mkEvent("phase_started", { phase: "clarify", role: "agent_b", agent: "codex", storyId: "US-001", iteration: 1 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "clarify", role: "agent_b", agent: "codex", storyId: "US-001", iteration: 1, exitCode: 0, stdout: "questions" }));
+  const phases = currentIterationPhases(thread);
+  assert(phases.length === 2, `expected 2 phase_completed events, got ${phases.length}`);
+  assert(phases[0].data.phase === "brainstorm", "first phase should be brainstorm");
+  assert(phases[1].data.phase === "clarify", "second phase should be clarify");
+});
+
+Deno.test("currentIterationPhases ignores phases from previous iterations", () => {
+  let thread = createThread(mkPrd([mkStory("US-001", 1, false)]), testConfig);
+  // Iteration 1
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", role: "agent_a", agent: "claude", storyId: "US-001", iteration: 1, exitCode: 0, stdout: "old" }));
+  thread = appendEvent(thread, mkEvent("iteration_completed", { iteration: 1, storyId: "US-001", allGatesPassed: false }));
+  // Iteration 2
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 2, storyId: "US-001", storyTitle: "Story US-001" }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", role: "agent_a", agent: "claude", storyId: "US-001", iteration: 2, exitCode: 0, stdout: "new" }));
+  const phases = currentIterationPhases(thread);
+  assert(phases.length === 1, `expected 1 phase from current iteration, got ${phases.length}`);
+  assert(phases[0].data.stdout === "new", "should be from iteration 2");
+});
+
+Deno.test("lastCompletedPhase returns null when no phases", () => {
+  const thread = createThread(mkPrd([mkStory("US-001", 1, false)]), testConfig);
+  assert(lastCompletedPhase(thread) === null, "expected null");
+});
+
+Deno.test("lastCompletedPhase returns correct phase", () => {
+  let thread = createThread(mkPrd([mkStory("US-001", 1, false)]), testConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", role: "agent_a", agent: "claude", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "clarify", role: "agent_b", agent: "codex", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  assert(lastCompletedPhase(thread) === "clarify", "expected clarify");
+});
+
+Deno.test("nextPhase returns brainstorm for null input", () => {
+  assert(nextPhase(null) === "brainstorm", "expected brainstorm");
+});
+
+Deno.test("nextPhase returns clarify after brainstorm", () => {
+  assert(nextPhase("brainstorm") === "clarify", "expected clarify");
+});
+
+Deno.test("nextPhase returns plan after clarify", () => {
+  assert(nextPhase("clarify") === "plan", "expected plan");
+});
+
+Deno.test("nextPhase returns execute after plan", () => {
+  assert(nextPhase("plan") === "execute", "expected execute");
+});
+
+Deno.test("nextPhase returns aar after execute", () => {
+  assert(nextPhase("execute") === "aar", "expected aar");
+});
+
+Deno.test("nextPhase returns incorporate_aar after aar", () => {
+  assert(nextPhase("aar") === "incorporate_aar", "expected incorporate_aar");
+});
+
+Deno.test("nextPhase returns null after incorporate_aar", () => {
+  assert(nextPhase("incorporate_aar") === null, "expected null");
+});
+
+Deno.test("phaseCompletionCount returns 0 when no phases", () => {
+  const thread = createThread(mkPrd([mkStory("US-001", 1, false)]), testConfig);
+  assert(phaseCompletionCount(thread, "brainstorm") === 0, "expected 0");
+});
+
+Deno.test("phaseCompletionCount counts specific phase completions", () => {
+  let thread = createThread(mkPrd([mkStory("US-001", 1, false)]), testConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "aar", role: "agent_a", agent: "claude", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "incorporate_aar", role: "agent_b", agent: "codex", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "aar", role: "agent_a", agent: "claude", storyId: "US-001", iteration: 1, exitCode: 0 }));
+  assert(phaseCompletionCount(thread, "aar") === 2, "expected 2 aar completions");
+  assert(phaseCompletionCount(thread, "incorporate_aar") === 1, "expected 1 incorporate_aar completion");
+});
+
+Deno.test("deriveIterations captures phase_completed exit codes", () => {
+  let thread = createThread(mkPrd([mkStory("US-001", 1, false)]), testConfig);
+  thread = appendEvent(thread, mkEvent("iteration_started", { iteration: 1, storyId: "US-001", storyTitle: "Story US-001" }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "brainstorm", exitCode: 0, stdout: "ideas" }));
+  thread = appendEvent(thread, mkEvent("phase_completed", { phase: "incorporate_aar", exitCode: 0, stdout: "final" }));
+  thread = appendEvent(thread, mkEvent("iteration_completed", { iteration: 1, storyId: "US-001", allGatesPassed: true }));
+  const state = threadToState(thread);
+  assert(state.iterations.length === 1, "expected 1 iteration");
+  assert(state.iterations[0].agentExitCode === 0, "expected exit code 0 from last phase");
+  assert(state.iterations[0].agentStdout === "final", "expected stdout from last phase");
 });

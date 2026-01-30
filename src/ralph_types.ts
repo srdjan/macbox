@@ -1,6 +1,52 @@
 // Ralph autonomous loop types.
 // No runtime logic - only type exports and defaults.
 
+import type { AgentKind } from "./agent.ts";
+
+// ---------------------------------------------------------------------------
+// Multi-agent orchestration types
+// ---------------------------------------------------------------------------
+
+export type MultiAgentPhase =
+  | "brainstorm"
+  | "clarify"
+  | "plan"
+  | "execute"
+  | "aar"
+  | "incorporate_aar";
+
+export type AgentRole = "agent_a" | "agent_b";
+
+export const PHASE_ORDER: ReadonlyArray<MultiAgentPhase> = [
+  "brainstorm",
+  "clarify",
+  "plan",
+  "execute",
+  "aar",
+  "incorporate_aar",
+];
+
+export const PHASE_TO_ROLE: Record<MultiAgentPhase, AgentRole> = {
+  brainstorm: "agent_a",
+  clarify: "agent_b",
+  plan: "agent_a",
+  execute: "agent_b",
+  aar: "agent_a",
+  incorporate_aar: "agent_b",
+};
+
+export type MultiAgentConfig = {
+  readonly enabled: true;
+  readonly agentA: AgentKind;
+  readonly agentB: AgentKind;
+  readonly cmdA?: string;
+  readonly cmdB?: string;
+};
+
+// ---------------------------------------------------------------------------
+// Core Ralph types
+// ---------------------------------------------------------------------------
+
 export type Story = {
   readonly id: string;
   readonly title: string;
@@ -31,6 +77,7 @@ export type RalphConfig = {
   readonly promptTemplate?: string;
   readonly requireApprovalBeforeCommit?: boolean;
   readonly maxConsecutiveFailures?: number;
+  readonly multiAgent?: MultiAgentConfig;
 };
 
 export type GateResult = {

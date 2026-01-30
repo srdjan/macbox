@@ -4,12 +4,14 @@
 import type {
   GateResult,
   IterationResult,
+  MultiAgentPhase,
   Prd,
   RalphConfig,
   RalphState,
   Story,
   TerminationReason,
 } from "./ralph_types.ts";
+import { PHASE_ORDER } from "./ralph_types.ts";
 import { ensureDir } from "./fs.ts";
 import { pathJoin } from "./os.ts";
 
@@ -22,6 +24,8 @@ export type RalphEventType =
   | "iteration_started"
   | "agent_dispatched"
   | "agent_completed"
+  | "phase_started"
+  | "phase_completed"
   | "gate_started"
   | "gate_completed"
   | "story_passed"
@@ -157,6 +161,15 @@ const deriveIterations = (thread: RalphThread): IterationResult[] => {
           current.agentExitCode = event.data.exitCode as number;
           current.agentStdout = event.data.stdout as string | undefined;
           current.completionSignal = event.data.completionSignal as boolean | undefined ?? false;
+        }
+        break;
+
+      case "phase_completed":
+        if (current) {
+          // In multi-agent mode, the last phase's exit code becomes the
+          // iteration's effective agent exit code.
+          current.agentExitCode = event.data.exitCode as number;
+          current.agentStdout = event.data.stdout as string | undefined;
         }
         break;
 
@@ -347,6 +360,39 @@ export const consecutiveFailures = (thread: RalphThread, storyId: string): numbe
 export const detectHumanInputRequest = (output: string): string | null => {
   const match = output.match(/<request-input>([\s\S]*?)<\/request-input>/);
   return match ? match[1].trim() : null;
+};
+
+// ---------------------------------------------------------------------------
+// Multi-agent query helpers
+// ---------------------------------------------------------------------------
+
+/** Get all phase_completed events from the current iteration. */
+export const currentIterationPhases = (thread: RalphThread): RalphEvent[] => {
+  const lastIterStart = lastEventOfType(thread, "iteration_started");
+  if (!lastIterStart) return [];
+  const idx = thread.events.indexOf(lastIterStart);
+  return thread.events.slice(idx).filter((e) => e.type === "phase_completed");
+};
+
+/** Get the last completed phase name in the current iteration, or null if none. */
+export const lastCompletedPhase = (thread: RalphThread): MultiAgentPhase | null => {
+  const phases = currentIterationPhases(thread);
+  if (phases.length === 0) return null;
+  return phases.at(-1)!.data.phase as MultiAgentPhase;
+};
+
+/** Get the next phase after the given one, or the first phase if null. Returns null when all phases are done. */
+export const nextPhase = (after: MultiAgentPhase | null): MultiAgentPhase | null => {
+  if (after === null) return PHASE_ORDER[0];
+  const idx = PHASE_ORDER.indexOf(after);
+  if (idx < 0 || idx >= PHASE_ORDER.length - 1) return null;
+  return PHASE_ORDER[idx + 1];
+};
+
+/** Count how many times a specific phase has completed in the current iteration (for retry tracking). */
+export const phaseCompletionCount = (thread: RalphThread, phase: MultiAgentPhase): number => {
+  const phases = currentIterationPhases(thread);
+  return phases.filter((e) => e.data.phase === phase).length;
 };
 
 // ---------------------------------------------------------------------------

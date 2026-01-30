@@ -9,12 +9,21 @@ export type PresetCapabilities = {
   readonly extraWritePaths?: ReadonlyArray<string>;
 };
 
+export type PresetMultiAgentConfig = {
+  readonly enabled?: boolean;
+  readonly agentA?: AgentKind;
+  readonly agentB?: AgentKind;
+  readonly cmdA?: string;
+  readonly cmdB?: string;
+};
+
 export type PresetRalphConfig = {
   readonly maxIterations?: number;
   readonly qualityGates?: ReadonlyArray<{ readonly name: string; readonly cmd: string; readonly continueOnFail?: boolean }>;
   readonly delayBetweenIterationsMs?: number;
   readonly commitOnPass?: boolean;
   readonly promptTemplate?: string;
+  readonly multiAgent?: PresetMultiAgentConfig;
 };
 
 export type Preset = {
@@ -191,12 +200,25 @@ const validatePreset = (raw: unknown, nameHint: string): Preset => {
           continueOnFail: typeof g.continueOnFail === "boolean" ? g.continueOnFail : undefined,
         }))
       : undefined;
+    const multiAgent = (() => {
+      if (!r.multiAgent || typeof r.multiAgent !== "object") return undefined;
+      const m = r.multiAgent as Record<string, unknown>;
+      return {
+        enabled: typeof m.enabled === "boolean" ? m.enabled : undefined,
+        agentA: typeof m.agentA === "string" ? m.agentA as AgentKind : undefined,
+        agentB: typeof m.agentB === "string" ? m.agentB as AgentKind : undefined,
+        cmdA: typeof m.cmdA === "string" ? m.cmdA : undefined,
+        cmdB: typeof m.cmdB === "string" ? m.cmdB : undefined,
+      } as PresetMultiAgentConfig;
+    })();
+
     return {
       maxIterations: typeof r.maxIterations === "number" ? r.maxIterations : undefined,
       qualityGates: gates,
       delayBetweenIterationsMs: typeof r.delayBetweenIterationsMs === "number" ? r.delayBetweenIterationsMs : undefined,
       commitOnPass: typeof r.commitOnPass === "boolean" ? r.commitOnPass : undefined,
       promptTemplate: typeof r.promptTemplate === "string" ? r.promptTemplate : undefined,
+      multiAgent,
     } as PresetRalphConfig;
   })();
 

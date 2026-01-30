@@ -7,6 +7,8 @@
 import type {
   GateResult,
   IterationResult,
+  MultiAgentConfig,
+  MultiAgentPhase,
   Prd,
   QualityGate,
   RalphConfig,
@@ -14,7 +16,7 @@ import type {
   Story,
   TerminationReason,
 } from "./ralph_types.ts";
-import { defaultRalphConfig } from "./ralph_types.ts";
+import { defaultRalphConfig, PHASE_ORDER, PHASE_TO_ROLE } from "./ralph_types.ts";
 import { exec } from "./exec.ts";
 import { executeSandboxRun, type SandboxRunRequest } from "./sandbox_run.ts";
 import { defaultAgentCmd, type AgentKind } from "./agent.ts";
@@ -33,7 +35,7 @@ import {
   threadToProgress,
   threadToState,
 } from "./ralph_thread.ts";
-import { determineNextStep, type RalphIntent } from "./ralph_reducer.ts";
+import { determineNextStep, type PhasePromptFn, type RalphIntent } from "./ralph_reducer.ts";
 
 // ---------------------------------------------------------------------------
 // Pure helpers
@@ -130,6 +132,18 @@ export const parseRalphConfig = (raw: unknown): RalphConfig => {
     }
   }
 
+  // Parse multi-agent config if present
+  const rawMulti = isObj(raw.multiAgent) ? raw.multiAgent : undefined;
+  const multiAgent: MultiAgentConfig | undefined = rawMulti && rawMulti.enabled
+    ? {
+        enabled: true,
+        agentA: (typeof rawMulti.agentA === "string" && isAgentKind(rawMulti.agentA)) ? rawMulti.agentA : "claude",
+        agentB: (typeof rawMulti.agentB === "string" && isAgentKind(rawMulti.agentB)) ? rawMulti.agentB : "codex",
+        cmdA: typeof rawMulti.cmdA === "string" ? rawMulti.cmdA : undefined,
+        cmdB: typeof rawMulti.cmdB === "string" ? rawMulti.cmdB : undefined,
+      }
+    : undefined;
+
   return {
     maxIterations,
     qualityGates,
@@ -138,8 +152,12 @@ export const parseRalphConfig = (raw: unknown): RalphConfig => {
     promptTemplate,
     requireApprovalBeforeCommit,
     maxConsecutiveFailures,
+    multiAgent,
   };
 };
+
+const isAgentKind = (v: string): v is AgentKind =>
+  v === "claude" || v === "codex" || v === "custom";
 
 /** Build the per-iteration prompt sent to the agent (legacy signature for backward compat). */
 export const buildPrompt = (
@@ -267,6 +285,142 @@ ${gateList}
 </instructions>
 
 This is iteration ${iteration} of ${config.maxIterations}.`;
+};
+
+// ---------------------------------------------------------------------------
+// Multi-agent phase prompt construction
+// ---------------------------------------------------------------------------
+
+const PHASE_ROLE_DESCRIPTIONS: Record<MultiAgentPhase, string> = {
+  brainstorm: "You are Agent-A in a multi-agent coding pipeline. Your role is to BRAINSTORM approaches for implementing this story. Do NOT write code yet.",
+  clarify: "You are Agent-B reviewing a brainstorm from Agent-A. Your role is to CLARIFY by identifying gaps, asking questions, and refining the approach. Do NOT write code yet.",
+  plan: "You are Agent-A creating a DETAILED IMPLEMENTATION PLAN. You have your brainstorm and Agent-B's review. Produce a step-by-step plan that Agent-B will follow.",
+  execute: "You are Agent-B implementing a plan created by Agent-A. Follow the plan precisely and write all necessary code.",
+  aar: "You are Agent-A conducting an After Action Review of Agent-B's implementation. Review the code changes against the plan and acceptance criteria. Do NOT modify code.",
+  incorporate_aar: "You are Agent-B refining your implementation based on Agent-A's After Action Review. Apply the fixes identified.",
+};
+
+const PHASE_INSTRUCTIONS: Record<MultiAgentPhase, string> = {
+  brainstorm: `1. Analyze the story requirements and codebase structure
+2. Identify 2-3 possible implementation approaches
+3. For each approach, explain: strategy, files to modify, risks, and complexity
+4. Recommend your preferred approach with reasoning
+5. Note any ambiguities or questions that need clarification
+6. Output your analysis in plain text (no code files yet)`,
+  clarify: `1. Review Agent-A's proposed approaches critically
+2. Identify any missed edge cases, architectural concerns, or ambiguities
+3. Ask specific questions about unclear aspects
+4. Suggest refinements to the recommended approach
+5. If the brainstorm is solid, confirm and add supplementary considerations
+6. Output your review in plain text (no code files yet)`,
+  plan: `1. Address all questions and concerns raised in the clarification phase
+2. Produce a numbered, step-by-step implementation plan
+3. For each step, specify: file path, what to change, and why
+4. Include test strategy
+5. Be precise enough that another agent can execute without ambiguity
+6. Do NOT write the actual code - describe what code to write`,
+  execute: `1. Follow the implementation plan step by step
+2. Write all necessary code changes
+3. If the plan has ambiguities, use your best judgment and note deviations
+4. Make minimal, focused changes following existing code patterns
+5. Do NOT commit - the system handles commits
+6. Summarize what you changed and any deviations from the plan`,
+  aar: `1. Review the code changes against the plan and acceptance criteria
+2. Identify any issues: bugs, missed requirements, style violations, test gaps
+3. For each issue, describe: what is wrong, where, and how to fix it
+4. If the implementation looks correct, confirm with a brief summary
+5. Be specific and actionable - Agent-B will use this to refine
+6. Do NOT modify code - only review and describe issues`,
+  incorporate_aar: `1. Address each issue identified in the AAR
+2. Apply fixes to the codebase
+3. If the AAR found no issues, confirm the implementation is complete
+4. Make minimal changes - only fix what was identified
+5. Do NOT commit - the system handles commits
+6. Summarize all changes made in response to the AAR`,
+};
+
+const MAX_PHASE_OUTPUT_CHARS = 8000;
+
+const truncatePhaseOutput = (output: string): string =>
+  output.length > MAX_PHASE_OUTPUT_CHARS
+    ? output.slice(-MAX_PHASE_OUTPUT_CHARS) + "\n[...truncated]"
+    : output;
+
+/** Build a phase-specific prompt for multi-agent mode. */
+export const buildPhasePrompt: PhasePromptFn = (
+  prd: Prd,
+  story: Story,
+  iteration: number,
+  phase: MultiAgentPhase,
+  priorPhaseOutputs: ReadonlyArray<{ phase: MultiAgentPhase; output: string }>,
+): string => {
+  const totalStories = prd.userStories.length;
+  const passedCount = prd.userStories.filter((s) => s.passes).length;
+  const remaining = prd.userStories
+    .filter((s) => !s.passes)
+    .sort((a, b) => a.priority - b.priority)
+    .map((s) => `  [${s.id}] (priority ${s.priority}) ${s.title}`)
+    .join("\n  ");
+
+  const acList = story.acceptanceCriteria
+    .map((c, i) => `  ${i + 1}. ${c}`)
+    .join("\n");
+
+  const notesSection = story.notes ? `\nNotes: ${story.notes}` : "";
+
+  const roleDescription = PHASE_ROLE_DESCRIPTIONS[phase];
+  const phaseInstructions = PHASE_INSTRUCTIONS[phase];
+
+  const priorContext = priorPhaseOutputs.length > 0
+    ? priorPhaseOutputs.map((p) =>
+        `<phase-output phase="${p.phase}">\n${truncatePhaseOutput(p.output)}\n</phase-output>`
+      ).join("\n\n")
+    : "";
+
+  return `${roleDescription}
+
+Project: ${prd.project}
+Description: ${prd.description}
+
+<current-story>
+ID: ${story.id}
+Title: ${story.title}
+Description: ${story.description}
+Acceptance Criteria:
+${acList}${notesSection}
+</current-story>
+
+<prd-overview>
+Stories completed: ${passedCount}/${totalStories}
+Remaining stories (by priority):
+  ${remaining}
+</prd-overview>
+
+${priorContext ? `<prior-phases>\n${priorContext}\n</prior-phases>` : ""}
+
+<instructions>
+${phaseInstructions}
+</instructions>
+
+This is phase "${phase}" of iteration ${iteration}.`;
+};
+
+// ---------------------------------------------------------------------------
+// Multi-agent agent command resolution
+// ---------------------------------------------------------------------------
+
+/** Resolve the base command for a specific agent role in multi-agent mode. */
+const resolvePhaseAgentCommand = (
+  phaseAgent: AgentKind,
+  multiConfig: MultiAgentConfig,
+): ReadonlyArray<string> => {
+  if (phaseAgent === multiConfig.agentA && multiConfig.cmdA) {
+    return [multiConfig.cmdA];
+  }
+  if (phaseAgent === multiConfig.agentB && multiConfig.cmdB) {
+    return [multiConfig.cmdB];
+  }
+  return defaultAgentCmd(phaseAgent, true);
 };
 
 // ---------------------------------------------------------------------------
@@ -470,6 +624,9 @@ const runLoop = async (
     return buildPromptFromThread(thread, story, iteration, config);
   };
 
+  // Phase prompt builder for multi-agent mode (always provided; reducer checks config)
+  const buildPhasePromptFn: PhasePromptFn = buildPhasePrompt;
+
   // Tracking for backward-compat derived state
   let currentStory: Story | null = null;
   let iterationGateResults: GateResult[] = [];
@@ -484,12 +641,123 @@ const runLoop = async (
       break;
     }
 
-    const intent = determineNextStep(thread, config, buildPromptFn);
+    const intent = determineNextStep(thread, config, buildPromptFn, buildPhasePromptFn);
 
     switch (intent.kind) {
       // -------------------------------------------------------------------
       case "run_agent": {
-        const { story, prompt, iteration } = intent;
+        const { story, prompt, iteration, phase, role, agent: phaseAgent } = intent;
+
+        // Multi-agent phase dispatch
+        if (phase && phaseAgent && config.multiAgent?.enabled) {
+          // Emit iteration_started if not already emitted for this iteration
+          const lastIterStart = thread.events.findLast((e) => e.type === "iteration_started");
+          const needsIterStart = !lastIterStart ||
+            (lastIterStart.data.iteration as number) !== iteration;
+
+          if (needsIterStart) {
+            currentStory = story;
+            iterationGateResults = [];
+            iterationCommitted = false;
+
+            console.error(
+              `ralph: iteration ${iteration}/${config.maxIterations} - story ${story.id}: ${story.title}`,
+            );
+            thread = appendEvent(thread, mkEvent("iteration_started", {
+              iteration,
+              storyId: story.id,
+              storyTitle: story.title,
+            }));
+          }
+
+          console.error(`ralph:   phase ${phase} (${phaseAgent})`);
+
+          // Emit phase_started
+          thread = appendEvent(thread, mkEvent("phase_started", {
+            phase,
+            role,
+            agent: phaseAgent,
+            storyId: story.id,
+            iteration,
+          }));
+
+          // Resolve command for this agent
+          const phaseBaseCommand = resolvePhaseAgentCommand(phaseAgent, config.multiAgent);
+
+          // Build sandbox env
+          const env: Record<string, string> = { ...(args.env ?? {}) };
+          env["MACBOX_RALPH_ITERATION"] = String(iteration);
+          env["MACBOX_RALPH_STORY_ID"] = story.id;
+          env["MACBOX_RALPH_MAX_ITERATIONS"] = String(config.maxIterations);
+          env["MACBOX_RALPH_PHASE"] = phase;
+          env["MACBOX_RALPH_ROLE"] = role!;
+
+          // Execute agent
+          let agentResult: AgentExecResult;
+          try {
+            agentResult = await executeAgentInSandbox({
+              baseCommand: phaseBaseCommand,
+              prompt,
+              worktreePath,
+              repoRoot,
+              gitCommonDir,
+              gitDir,
+              agent: phaseAgent,
+              profiles: args.profiles,
+              caps: args.caps,
+              env,
+              debug,
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            thread = appendEvent(thread, mkEvent("error", {
+              source: "phase_agent_invocation",
+              message: msg,
+              recoverable: true,
+              phase,
+            }));
+            console.error(`ralph: phase ${phase} agent invocation failed: ${msg}`);
+            agentResult = { code: 1, stdout: "", stderr: msg };
+          }
+
+          // Emit phase_completed
+          thread = appendEvent(thread, mkEvent("phase_completed", {
+            phase,
+            role,
+            agent: phaseAgent,
+            storyId: story.id,
+            iteration,
+            exitCode: agentResult.code,
+            stdout: agentResult.stdout,
+            stderr: agentResult.stderr,
+          }));
+
+          // If execution phases fail, complete iteration as failed
+          if (agentResult.code !== 0 && (phase === "execute" || phase === "incorporate_aar")) {
+            console.error(`ralph: phase ${phase} failed (exit ${agentResult.code})`);
+            thread = appendEvent(thread, mkEvent("iteration_completed", {
+              iteration,
+              storyId: story.id,
+              allGatesPassed: false,
+            }));
+
+            if (currentStory) {
+              await appendProgressFile(ralphDir, iteration, currentStory, [], false);
+            }
+            await persistState(ralphDir, threadToState(thread));
+            await persistThread(ralphDir, thread);
+
+            if (config.delayBetweenIterationsMs > 0) {
+              await new Promise((r) => setTimeout(r, config.delayBetweenIterationsMs));
+            }
+            continue;
+          }
+
+          await persistThread(ralphDir, thread);
+          continue;
+        }
+
+        // Single-agent path (unchanged)
         currentStory = story;
         iterationGateResults = [];
         iterationCommitted = false;

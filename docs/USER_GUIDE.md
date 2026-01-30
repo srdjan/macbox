@@ -421,6 +421,7 @@ macbox ships with these presets:
 | `python-ml` | claude | host-tools | PYTHONDONTWRITEBYTECODE=1 | Python, pip, pyenv, virtualenvs |
 | `rust-dev` | claude | host-tools | RUST_BACKTRACE=1 | Cargo, rustup, Rust toolchain |
 | `ralph-typescript` | claude | host-tools | - | Ralph loop with typecheck + test gates |
+| `ralph-multi-agent` | claude + codex | host-tools | - | Multi-agent Ralph with 6-phase pipeline |
 
 ### Creating your own preset
 
@@ -490,7 +491,7 @@ Field reference:
 | `skills` | array | Absolute paths to SKILL.md files on the host (copied into sandbox at launch) |
 | `worktreePrefix` | string | Default worktree name prefix |
 | `startPoint` | string | Default git ref for new worktrees |
-| `ralph` | object | Ralph loop defaults (maxIterations, qualityGates, commitOnPass, requireApprovalBeforeCommit, maxConsecutiveFailures) |
+| `ralph` | object | Ralph loop defaults (maxIterations, qualityGates, commitOnPass, requireApprovalBeforeCommit, maxConsecutiveFailures, multiAgent) |
 
 ### Skills in presets
 
@@ -1322,6 +1323,143 @@ Each Ralph iteration injects these extra env vars into the agent sandbox:
 - `MACBOX_RALPH_ITERATION`: current iteration number (1-based)
 - `MACBOX_RALPH_STORY_ID`: the story being worked on (e.g. `US-001`)
 - `MACBOX_RALPH_MAX_ITERATIONS`: total iteration limit
+
+### Multi-agent mode
+
+Ralph can coordinate two agents across a structured 6-phase pipeline per
+story iteration. When multi-agent mode is enabled, each iteration expands
+from a single agent dispatch to six phases that alternate between Agent-A
+(default: Claude) and Agent-B (default: Codex).
+
+The phase pipeline:
+
+```
+[Story selected]
+  -> brainstorm (Agent-A)        -- generates approaches, no code
+  -> clarify (Agent-B)           -- reviews brainstorm, asks questions
+  -> plan (Agent-A)              -- detailed implementation plan
+  -> execute (Agent-B)           -- writes code following the plan
+  -> aar (Agent-A)               -- reviews execution, identifies issues
+  -> incorporate_aar (Agent-B)   -- applies fixes from the AAR
+  -> [quality gates]
+  -> [commit if gates pass]
+```
+
+Both agents share the same worktree and see each other's outputs. Each
+phase receives prior phase outputs as XML blocks so the agents can build
+on each other's work.
+
+#### Enabling multi-agent
+
+```bash
+# Via CLI flags
+macbox --ralph prd.json --multi-agent --agent-a claude --agent-b codex
+
+# Via preset
+macbox --ralph prd.json --preset ralph-multi-agent
+
+# Override agent commands
+macbox --ralph prd.json --multi-agent --cmd-a /opt/bin/claude --cmd-b /opt/bin/codex
+```
+
+CLI flags for multi-agent mode:
+
+| Flag | Purpose |
+| ---- | ------- |
+| `--multi-agent` | Enable multi-agent mode |
+| `--agent-a <kind>` | Agent for role A (default: claude) |
+| `--agent-b <kind>` | Agent for role B (default: codex) |
+| `--cmd-a <path>` | Command override for Agent-A |
+| `--cmd-b <path>` | Command override for Agent-B |
+
+When `--multi-agent` is enabled, macbox verifies that both agents are
+installed and authenticated before starting the loop. If either agent is
+missing, macbox exits with a clear error message.
+
+#### Phase descriptions
+
+Each phase has a distinct role in the pipeline:
+
+- **Brainstorm** (Agent-A): Generate 2-3 implementation approaches. Identify
+  risks, ambiguities, and open questions. No code.
+- **Clarify** (Agent-B): Review the brainstorm output. Identify gaps, edge
+  cases, and missed concerns. Suggest refinements.
+- **Plan** (Agent-A): Create a step-by-step implementation plan addressing
+  clarification feedback. Specify file paths and changes. No code.
+- **Execute** (Agent-B): Follow the plan. Write code. Note any deviations
+  from the plan.
+- **AAR** (Agent-A): After Action Review. Review the code changes against
+  the plan and acceptance criteria. List specific issues with fixes. No
+  code modifications.
+- **Incorporate AAR** (Agent-B): Apply each fix identified in the AAR. Make
+  minimal, targeted changes.
+
+#### Error handling
+
+Advisory phases (brainstorm, clarify, plan) are non-critical. If one fails,
+Ralph retries it once and then skips ahead to the execute phase with
+whatever context exists from prior phases.
+
+Execution phases (execute, incorporate_aar) are critical. If one fails, the
+entire iteration is marked as failed and the story is retried on the next
+iteration, the same as a single-agent failure.
+
+AAR retry-then-pause: if the AAR identifies issues and the incorporate_aar
+phase has already been attempted (meaning the AAR+incorporate cycle ran more
+than once), Ralph pauses for human input rather than looping indefinitely.
+Resume with `--resume` as usual.
+
+#### Environment variables (multi-agent)
+
+In addition to the standard Ralph env vars, multi-agent iterations inject:
+
+- `MACBOX_RALPH_PHASE`: the current phase name (e.g. `brainstorm`, `execute`)
+- `MACBOX_RALPH_ROLE`: the agent's role (`agent_a` or `agent_b`)
+
+#### Multi-agent in presets
+
+```json
+{
+  "name": "ralph-multi-agent",
+  "description": "Claude + Codex multi-agent Ralph loop",
+  "profiles": ["host-tools"],
+  "capabilities": { "network": true, "exec": true },
+  "worktreePrefix": "ralph-multi",
+  "ralph": {
+    "maxIterations": 10,
+    "qualityGates": [
+      { "name": "typecheck", "cmd": "npx tsc --noEmit" },
+      { "name": "test", "cmd": "npm test" }
+    ],
+    "commitOnPass": true,
+    "multiAgent": {
+      "enabled": true,
+      "agentA": "claude",
+      "agentB": "codex"
+    }
+  }
+}
+```
+
+The `multiAgent` field accepts:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Enable multi-agent mode |
+| `agentA` | string | Agent kind for role A (`claude`, `codex`, or `custom`) |
+| `agentB` | string | Agent kind for role B |
+| `cmdA` | string | Command override for Agent-A |
+| `cmdB` | string | Command override for Agent-B |
+
+#### Pause and resume (multi-agent)
+
+Pause and resume work the same as single-agent Ralph. Press Ctrl-C to pause.
+The thread records phase-level events, so on resume Ralph picks up at the
+next unfinished phase rather than restarting the entire iteration.
+
+```bash
+macbox --ralph prd.json --resume --worktree <name>
+```
 
 ---
 
