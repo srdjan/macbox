@@ -80,11 +80,13 @@ sandbox is the **lock on the guest house door**:
 When no subcommand is given, macbox defaults to Claude.
 
 ```bash
-# direct prompt (Claude is implicit)
-macbox --prompt "fix the build"
-
-# launch Claude interactively
+# launch Claude interactively (default when no subcommand is given)
+macbox
 macbox claude
+
+# direct prompt - runs in pipe mode and exits when done
+macbox --prompt "fix the build"
+macbox claude --prompt "refactor the auth module"
 
 # launch Codex instead
 macbox codex
@@ -95,8 +97,8 @@ macbox claude --preset fullstack-typescript
 # run Ralph autonomous loop with a PRD
 macbox --ralph prd.json
 
-# pass flags through to the agent after --
-macbox claude -- -p "refactor the auth module"
+# pass extra flags through to the agent after --
+macbox claude -- --verbose
 
 # run a flow defined in macbox.json
 macbox flow run build
@@ -165,15 +167,26 @@ your project and `macbox.json`, auto-names the worktree (incrementing:
 `ai-claude`, `ai-claude-1`, ...), and launches the agent in a sandboxed
 worktree.
 
+Two modes are available:
+
+- **Interactive mode** (no `--prompt`): launches the agent's full interactive
+  TUI. This is the default when you run `macbox` or `macbox claude` without a
+  prompt.
+- **Pipe mode** (`--prompt "..."`): sends the prompt to the agent in
+  non-interactive mode. The agent processes the prompt, prints its output, and
+  exits.
+
 Authentication is automatic: if credentials are missing, macbox runs the
 agent's setup flow before launching.
 
 ```bash
-# direct prompt (Claude is implicit)
-macbox --prompt "fix the build"
-
-# launch Claude interactively
+# launch Claude interactively (default when no subcommand is given)
+macbox
 macbox claude
+
+# direct prompt - runs in pipe mode and exits when done
+macbox --prompt "fix the build"
+macbox claude --prompt "refactor the auth module"
 
 # launch Codex
 macbox codex
@@ -184,8 +197,8 @@ macbox claude --preset fullstack-typescript
 # run Ralph autonomous loop
 macbox --ralph prd.json
 
-# pass flags through to the agent after --
-macbox claude -- -p "fix the build"
+# pass extra flags through to the agent after --
+macbox claude -- --verbose
 ```
 
 ### Advanced flags

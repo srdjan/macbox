@@ -53,11 +53,13 @@ You can override profile search with `MACBOX_PROFILES_DIR=/path/to/profiles`.
 ### Run an agent in a sandbox
 
 ```bash
-# Direct prompt - Claude is the default when no subcommand is given
-macbox --prompt "fix the build"
-
-# Launch Claude interactively
+# Launch Claude interactively (default when no subcommand is given)
+macbox
 macbox claude
+
+# Direct prompt - runs in pipe mode and exits when done
+macbox --prompt "fix the build"
+macbox claude --prompt "refactor the auth module"
 
 # Launch Codex
 macbox codex
@@ -65,8 +67,8 @@ macbox codex
 # With a preset for a complete workflow configuration
 macbox claude --preset fullstack-typescript
 
-# Pass flags through to the agent after --
-macbox claude -- -p "refactor the auth module"
+# Pass extra flags through to the agent after --
+macbox claude -- --verbose
 ```
 
 Authentication is automatic: macbox checks for credentials on first use and

@@ -30,6 +30,10 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   const cmd = argv[0];
   const rest = argv.slice(1);
 
+  if (cmd === "-p") {
+    throw new Error("macbox: -p is not supported. Use --prompt instead.");
+  }
+
   switch (cmd) {
     case "claude":
       return await agentCmd("claude", rest);

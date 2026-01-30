@@ -203,7 +203,7 @@ const agentRunStep: StepHandler = async (step, ctx) => {
     return wrapError(step, startedAt, "steps:agent.run requires a configured agent (claude or codex)");
   }
 
-  const baseCmd = [...defaultAgentCmd(agent)];
+  const baseCmd = [...defaultAgentCmd(agent, true)];
   const passthrough = step.args?.passthrough;
   const cmd = Array.isArray(passthrough)
     ? [...baseCmd, ...passthrough.filter((x) => typeof x === "string") as string[]]

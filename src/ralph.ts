@@ -450,7 +450,7 @@ const runLoop = async (
   const ralphDir = pathJoin(worktreePath, ".macbox", "ralph");
   await ensureDir(ralphDir);
 
-  const baseCommand = args.command ?? defaultAgentCmd(agent);
+  const baseCommand = args.command ?? defaultAgentCmd(agent, true);
   if (baseCommand.length === 0) {
     throw new Error("ralph: no agent command configured (use --agent or --cmd)");
   }

@@ -307,9 +307,14 @@ export const agentCmd = async (
   });
 
   // --- Build command ---
-  const baseCmd = cmdOverride ? [cmdOverride] : [...defaultAgentCmd(agent)];
+  const hasPrompt = !!prompt;
+  const baseCmd = cmdOverride ? [cmdOverride] : [...defaultAgentCmd(agent, hasPrompt)];
   if (agent === "claude" && cmdOverride) {
-    baseCmd.push("-p", "--dangerously-skip-permissions");
+    if (hasPrompt) {
+      baseCmd.push("-p", "--dangerously-skip-permissions");
+    } else {
+      baseCmd.push("--dangerously-skip-permissions");
+    }
   }
   const passthrough = a.passthrough;
   const fullCmd = baseCmd.length > 0

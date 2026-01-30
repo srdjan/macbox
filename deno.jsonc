@@ -1,6 +1,6 @@
 {
   "name": "@srdjan/macbox",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "exports": "./src/main.ts",
   "tasks": {
     "dev": "deno run -A src/main.ts",

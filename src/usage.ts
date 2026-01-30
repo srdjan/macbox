@@ -3,13 +3,15 @@ export const printMinimalHelp = () => {
 macbox - run AI agents in a native macOS sandbox
 
 Usage:
-  macbox --prompt <text>                      direct prompt (Claude)
+  macbox                                      interactive Claude (default)
+  macbox claude [options] [-- <agent args>]   interactive Claude
+  macbox codex  [options] [-- <agent args>]   interactive Codex
+  macbox --prompt <text>                      pipe mode (runs prompt, then exits)
   macbox --ralph <prd-path>                   autonomous mode (Claude)
-  macbox claude [options] [-- <agent args>]   explicit agent
-  macbox codex  [options] [-- <agent args>]   explicit agent
 
 Examples:
-  macbox --prompt "fix the build"
+  macbox                                      launch Claude interactively
+  macbox --prompt "fix the build"             run prompt in pipe mode
   macbox --ralph prd.json
   macbox claude --preset fullstack-typescript
   macbox codex --prompt "fix the build"
@@ -24,14 +26,16 @@ export const printHelp = () => {
 macbox - run AI agents in a native macOS sandbox (Seatbelt) using git worktrees
 
 Usage:
-  macbox --prompt <text>                      direct prompt (Claude)
+  macbox                                      interactive Claude (default)
+  macbox claude [options] [-- <agent args>]   interactive Claude
+  macbox codex  [options] [-- <agent args>]   interactive Codex
+  macbox --prompt <text>                      pipe mode (runs prompt, then exits)
   macbox --ralph <prd-path>                   autonomous mode (Claude)
-  macbox claude [options] [-- <agent args>]   explicit agent
-  macbox codex  [options] [-- <agent args>]   explicit agent
 
   Authentication is automatic on first use.
   Everything after -- is passed directly to the agent.
   When no subcommand is given, Claude is used by default.
+  Without --prompt, the agent launches in interactive mode.
 
   --ralph accepts a path to prd.json or a free-form prompt string.
   When --ralph is set, additional flags apply: --gate, --max-iterations, --no-commit,
@@ -117,12 +121,12 @@ Notes:
     State is saved to .macbox/ralph/.
 
 Examples:
-  macbox --prompt "fix the build"
+  macbox                                      launch Claude interactively
+  macbox --prompt "fix the build"             run prompt in pipe mode
   macbox --ralph prd.json --gate "test:npm test"
   macbox --ralph "Add a search endpoint"
   macbox claude --preset fullstack-typescript
   macbox codex --prompt "fix the build"
-  macbox claude --preset fullstack-typescript -- -p "fix the build"
   macbox presets list
   macbox presets show fullstack-typescript
   macbox profiles list
