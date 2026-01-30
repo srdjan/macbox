@@ -17,9 +17,10 @@ import { detectAgents, pickDefaultAgent, resolveAgentPath } from "./agent_detect
 import { nextWorktreeName } from "./worktree_naming.ts";
 import { loadMacboxConfig } from "./flow_config.ts";
 import { findProjectByPath } from "./project.ts";
-import { runRalphLoop, loadPrdFromFile, promptToPrd, parseRalphConfig } from "./ralph.ts";
+import { runRalphLoop, resumeRalphLoop, loadPrdFromFile, promptToPrd, parseRalphConfig, requestPause, clearPause } from "./ralph.ts";
 import type { Prd, QualityGate, RalphConfig } from "./ralph_types.ts";
 import { defaultRalphConfig } from "./ralph_types.ts";
+import { loadThread } from "./ralph_thread.ts";
 import { collectSandboxViolations } from "./sandbox_trace.ts";
 import { formatLogShowTime } from "./os.ts";
 import { pathJoin } from "./os.ts";
@@ -55,11 +56,14 @@ export const ralphCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   const debug = boolFlag(a.flags.debug, false) || boolFlag(a.flags.trace, false);
   const trace = boolFlag(a.flags.trace, false);
   const jsonOut = boolFlag(a.flags.json, false);
+  const resumeFlag = boolFlag(a.flags.resume, false);
+  const requireApproval = boolFlag(a.flags["require-approval"], false);
+  const maxFailuresFlag = asString(a.flags["max-failures"]);
 
-  // Positional argument: prompt text or path to prd.json
+  // Positional argument: prompt text or path to prd.json (optional when resuming)
   const positional = a._[0];
-  if (!positional) {
-    throw new Error("ralph: requires a prompt string or path to prd.json");
+  if (!positional && !resumeFlag) {
+    throw new Error("ralph: requires a prompt string or path to prd.json (or --resume)");
   }
 
   // Load preset
@@ -107,13 +111,18 @@ export const ralphCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
 
   // Resolve worktree
   const worktreeFlag = asString(a.flags.worktree);
+  if (resumeFlag && !worktreeFlag) {
+    throw new Error("ralph: --resume requires --worktree <name>");
+  }
   const prefix = presetConfig?.preset.worktreePrefix ??
     (agent && agent !== "custom" ? `ralph-${agent}` : "ralph");
   const worktreeName = worktreeFlag ?? await nextWorktreeName({ baseDir: base, repoRoot: repo.root, prefix });
   const wtPath = await worktreeDir(base, repo.root, worktreeName);
-  const startPoint = asString(a.flags.branch) ?? presetConfig?.preset.startPoint ?? "HEAD";
-  const wtBranch = `macbox/${worktreeName}`;
-  await ensureWorktree(repo.root, wtPath, wtBranch, startPoint);
+  if (!resumeFlag) {
+    const startPoint = asString(a.flags.branch) ?? presetConfig?.preset.startPoint ?? "HEAD";
+    const wtBranch = `macbox/${worktreeName}`;
+    await ensureWorktree(repo.root, wtPath, wtBranch, startPoint);
+  }
 
   // Create sandbox dirs
   const mp = `${wtPath}/.macbox`;
@@ -190,34 +199,47 @@ export const ralphCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   }
 
   // Load or generate PRD
-  const isJsonInput = positional.endsWith(".json");
   let prd: Prd;
   let prdPath: string | undefined;
-  if (isJsonInput) {
-    const wtCandidate = pathJoin(wtPath, positional);
-    const absCandidate = positional.startsWith("/")
-      ? positional
-      : pathJoin(Deno.cwd(), positional);
-    let sourcePath: string | undefined;
-    if (await pathExists(wtCandidate)) {
-      sourcePath = wtCandidate;
-    } else if (await pathExists(absCandidate)) {
-      sourcePath = absCandidate;
+  if (resumeFlag && !positional) {
+    // When resuming without a positional arg, load PRD from the worktree
+    const wtPrdPath = pathJoin(wtPath, "prd.json");
+    if (await pathExists(wtPrdPath)) {
+      prd = await loadPrdFromFile(wtPrdPath);
+      prdPath = wtPrdPath;
+    } else {
+      throw new Error("ralph: --resume without prompt requires prd.json in worktree");
     }
-    if (sourcePath) {
-      prd = await loadPrdFromFile(sourcePath);
-      const wtPrefix = wtPath.endsWith("/") ? wtPath : `${wtPath}/`;
-      if (sourcePath === wtPath || sourcePath.startsWith(wtPrefix)) {
-        prdPath = sourcePath;
+  } else if (positional) {
+    const isJsonInput = positional.endsWith(".json");
+    if (isJsonInput) {
+      const wtCandidate = pathJoin(wtPath, positional);
+      const absCandidate = positional.startsWith("/")
+        ? positional
+        : pathJoin(Deno.cwd(), positional);
+      let sourcePath: string | undefined;
+      if (await pathExists(wtCandidate)) {
+        sourcePath = wtCandidate;
+      } else if (await pathExists(absCandidate)) {
+        sourcePath = absCandidate;
+      }
+      if (sourcePath) {
+        prd = await loadPrdFromFile(sourcePath);
+        const wtPrefix = wtPath.endsWith("/") ? wtPath : `${wtPath}/`;
+        if (sourcePath === wtPath || sourcePath.startsWith(wtPrefix)) {
+          prdPath = sourcePath;
+        } else {
+          prdPath = pathJoin(wtPath, "prd.json");
+          await Deno.writeTextFile(prdPath, JSON.stringify(prd, null, 2) + "\n", { create: true });
+        }
       } else {
-        prdPath = pathJoin(wtPath, "prd.json");
-        await Deno.writeTextFile(prdPath, JSON.stringify(prd, null, 2) + "\n", { create: true });
+        prd = promptToPrd(positional);
       }
     } else {
       prd = promptToPrd(positional);
     }
   } else {
-    prd = promptToPrd(positional);
+    throw new Error("ralph: requires a prompt string or path to prd.json (or --resume)");
   }
 
   // Build Ralph config: preset ralph section + CLI flags
@@ -232,12 +254,18 @@ export const ralphCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   const cliGates = parseGateFlags(a.flags.gate as string | boolean | undefined);
   const qualityGates = [...baseConfig.qualityGates, ...cliGates];
 
+  const maxConsecutiveFailures = maxFailuresFlag ? parseInt(maxFailuresFlag, 10) : baseConfig.maxConsecutiveFailures;
+
   const ralphConfig: RalphConfig = {
     maxIterations: maxIterations > 0 ? maxIterations : defaultRalphConfig.maxIterations,
     qualityGates,
     delayBetweenIterationsMs: baseConfig.delayBetweenIterationsMs,
     commitOnPass,
     promptTemplate: baseConfig.promptTemplate,
+    requireApprovalBeforeCommit: requireApproval || baseConfig.requireApprovalBeforeCommit,
+    maxConsecutiveFailures: maxConsecutiveFailures && maxConsecutiveFailures > 0
+      ? maxConsecutiveFailures
+      : undefined,
   };
 
   // Print summary
@@ -278,25 +306,71 @@ export const ralphCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
     console.error(`macbox: failed to save session: ${msg}`);
   }
 
+  // Install SIGINT handler for graceful pause
+  clearPause();
+  const sigintHandler = () => {
+    console.error("\nralph: pause requested (will stop after current operation)");
+    requestPause();
+  };
+  Deno.addSignalListener("SIGINT", sigintHandler);
+
   // Run the Ralph loop
+  const ralphRunArgs = {
+    prd,
+    prdPath,
+    config: ralphConfig,
+    worktreePath: wtPath,
+    repoRoot: repo.root,
+    gitCommonDir: repo.gitCommonDir,
+    gitDir: repo.gitDir,
+    agent: agentFlag,
+    command: baseCmd,
+    profiles: profileNames,
+    caps: { network, exec: execCap, extraRead: mergedExtraRead, extraWrite: mergedExtraWrite },
+    env,
+    debug,
+  };
+
   let state;
   try {
-    state = await runRalphLoop({
-      prd,
-      prdPath,
-      config: ralphConfig,
-      worktreePath: wtPath,
-      repoRoot: repo.root,
-      gitCommonDir: repo.gitCommonDir,
-      gitDir: repo.gitDir,
-      agent: agentFlag,
-      command: baseCmd,
-      profiles: profileNames,
-      caps: { network, exec: execCap, extraRead: mergedExtraRead, extraWrite: mergedExtraWrite },
-      env,
-      debug,
-    });
+    if (resumeFlag) {
+      // Handle human input if the thread was paused for it
+      const ralphDir = pathJoin(wtPath, ".macbox", "ralph");
+      const existingThread = await loadThread(ralphDir);
+      if (existingThread) {
+        const lastEv = existingThread.events.at(-1);
+        const prevEv = existingThread.events.at(-2);
+        if (lastEv?.type === "thread_completed" && prevEv?.type === "human_input_requested") {
+          const reason = (prevEv.data.reason as string) ?? "Input requested";
+          const context = (prevEv.data.context as string) ?? "";
+          console.log(`ralph: human input requested: ${reason}`);
+          if (context) console.log(`  context: ${context}`);
+          console.log("  Enter your response (press Enter when done):");
+          // Read response from stdin
+          const buf = new Uint8Array(4096);
+          const n = await Deno.stdin.read(buf);
+          const response = n ? new TextDecoder().decode(buf.subarray(0, n)).trim() : "";
+          // Append human_input_received event to thread and re-save
+          const { appendEvent, mkEvent, persistThread } = await import("./ralph_thread.ts");
+          let thread = appendEvent(existingThread, mkEvent("human_input_received", {
+            response,
+          }));
+          // Remove the thread_completed event so the loop can continue
+          // We need to re-create without the last event (thread_completed)
+          const eventsWithoutCompleted = existingThread.events.slice(0, -1);
+          thread = {
+            schema: "macbox.ralph.thread.v1",
+            events: [...eventsWithoutCompleted, mkEvent("human_input_received", { response })],
+          };
+          await persistThread(ralphDir, thread);
+        }
+      }
+      state = await resumeRalphLoop(ralphRunArgs);
+    } else {
+      state = await runRalphLoop(ralphRunArgs);
+    }
   } finally {
+    Deno.removeSignalListener("SIGINT", sigintHandler);
     if (trace) {
       const traceEnd = new Date(Date.now() + 250);
       const outFile = `${mp}/logs/sandbox-violations.log`;

@@ -1,5 +1,8 @@
 // Ralph autonomous loop engine.
 // Decoupled from CLI so both `macbox ralph` and `steps:ralph.run` can call it.
+//
+// The loop is structured as a stateless reducer dispatch:
+//   while (true) { intent = determineNextStep(thread); execute(intent); persist(thread); }
 
 import type {
   GateResult,
@@ -18,6 +21,19 @@ import { defaultAgentCmd, type AgentKind } from "./agent.ts";
 import type { SessionCaps } from "./sessions.ts";
 import { ensureDir } from "./fs.ts";
 import { pathJoin } from "./os.ts";
+import type { RalphThread, RalphEvent } from "./ralph_thread.ts";
+import {
+  appendEvent,
+  createThread,
+  mkEvent,
+  persistThread,
+  loadThread,
+  serializeForPrompt,
+  threadToPrd,
+  threadToProgress,
+  threadToState,
+} from "./ralph_thread.ts";
+import { determineNextStep, type RalphIntent } from "./ralph_reducer.ts";
 
 // ---------------------------------------------------------------------------
 // Pure helpers
@@ -94,6 +110,12 @@ export const parseRalphConfig = (raw: unknown): RalphConfig => {
   const promptTemplate = typeof raw.promptTemplate === "string"
     ? raw.promptTemplate
     : undefined;
+  const requireApprovalBeforeCommit = typeof raw.requireApprovalBeforeCommit === "boolean"
+    ? raw.requireApprovalBeforeCommit
+    : undefined;
+  const maxConsecutiveFailures = typeof raw.maxConsecutiveFailures === "number" && raw.maxConsecutiveFailures > 0
+    ? raw.maxConsecutiveFailures
+    : undefined;
 
   const qualityGates: QualityGate[] = [];
   if (Array.isArray(raw.qualityGates)) {
@@ -108,10 +130,18 @@ export const parseRalphConfig = (raw: unknown): RalphConfig => {
     }
   }
 
-  return { maxIterations, qualityGates, delayBetweenIterationsMs: delay, commitOnPass, promptTemplate };
+  return {
+    maxIterations,
+    qualityGates,
+    delayBetweenIterationsMs: delay,
+    commitOnPass,
+    promptTemplate,
+    requireApprovalBeforeCommit,
+    maxConsecutiveFailures,
+  };
 };
 
-/** Build the per-iteration prompt sent to the agent. */
+/** Build the per-iteration prompt sent to the agent (legacy signature for backward compat). */
 export const buildPrompt = (
   prd: Prd,
   story: Story,
@@ -172,6 +202,74 @@ This is iteration ${iteration} of ${config.maxIterations}.`;
 };
 
 // ---------------------------------------------------------------------------
+// Structured prompt construction (Thread-based)
+// ---------------------------------------------------------------------------
+
+/** Build the per-iteration prompt from Thread state using XML sections. */
+export const buildPromptFromThread = (
+  thread: RalphThread,
+  story: Story,
+  iteration: number,
+  config: RalphConfig,
+): string => {
+  const prd = threadToPrd(thread);
+  const totalStories = prd.userStories.length;
+  const passedCount = prd.userStories.filter((s) => s.passes).length;
+  const remaining = prd.userStories
+    .filter((s) => !s.passes)
+    .sort((a, b) => a.priority - b.priority)
+    .map((s) => `  [${s.id}] (priority ${s.priority}) ${s.title}`)
+    .join("\n  ");
+
+  const acList = story.acceptanceCriteria
+    .map((c, i) => `  ${i + 1}. ${c}`)
+    .join("\n");
+
+  const gateList = config.qualityGates.length > 0
+    ? config.qualityGates.map((g) => `  - ${g.name}: ${g.cmd}`).join("\n")
+    : "  (none configured)";
+
+  const notesSection = story.notes ? `\nNotes: ${story.notes}` : "";
+
+  const executionHistory = serializeForPrompt(thread);
+
+  return `You are an autonomous coding agent working on: ${prd.project}
+Project description: ${prd.description}
+
+<current-story>
+ID: ${story.id}
+Title: ${story.title}
+Description: ${story.description}
+Acceptance Criteria:
+${acList}${notesSection}
+</current-story>
+
+<prd-overview>
+Stories completed: ${passedCount}/${totalStories}
+Remaining stories (by priority):
+  ${remaining}
+</prd-overview>
+
+${executionHistory}
+
+<quality-gates>
+${gateList}
+</quality-gates>
+
+<instructions>
+1. Implement ONLY the current story (${story.id}).
+2. Make minimal, focused changes. Follow existing code patterns.
+3. After implementation, the following quality gates will run automatically.
+4. Do NOT commit. The system handles commits after quality gates pass.
+5. If you discover reusable patterns or gotchas, note them clearly in your output.
+6. If ALL project stories are complete, output exactly: <promise>COMPLETE</promise>
+7. If you need human input, output: <request-input>reason</request-input>
+</instructions>
+
+This is iteration ${iteration} of ${config.maxIterations}.`;
+};
+
+// ---------------------------------------------------------------------------
 // I/O helpers
 // ---------------------------------------------------------------------------
 
@@ -190,7 +288,7 @@ const readProgressFile = async (ralphDir: string): Promise<string> => {
   }
 };
 
-const appendProgress = async (
+const appendProgressFile = async (
   ralphDir: string,
   iteration: number,
   story: Story,
@@ -241,7 +339,84 @@ const truncateProgress = (progress: string, maxEntries: number): string => {
 };
 
 // ---------------------------------------------------------------------------
-// Core loop
+// Extracted side-effect functions
+// ---------------------------------------------------------------------------
+
+type AgentExecResult = { code: number; stdout?: string; stderr?: string };
+
+/** Execute the agent inside the sandbox. */
+export const executeAgentInSandbox = async (
+  args: {
+    baseCommand: ReadonlyArray<string>;
+    prompt: string;
+    worktreePath: string;
+    repoRoot: string;
+    gitCommonDir: string;
+    gitDir: string;
+    agent: AgentKind;
+    profiles?: ReadonlyArray<string>;
+    caps?: Partial<SessionCaps>;
+    env: Record<string, string>;
+    debug?: boolean;
+  },
+): Promise<AgentExecResult> => {
+  const agentCmd = [...args.baseCommand, args.prompt];
+  return await executeSandboxRun({
+    worktreePath: args.worktreePath,
+    repoRoot: args.repoRoot,
+    gitCommonDir: args.gitCommonDir,
+    gitDir: args.gitDir,
+    agent: args.agent,
+    profiles: args.profiles,
+    caps: args.caps,
+    command: agentCmd,
+    env: args.env,
+    debug: args.debug,
+    capture: true,
+    stream: true,
+  });
+};
+
+/** Execute a quality gate command in the worktree. */
+export const executeQualityGate = async (
+  gate: QualityGate,
+  worktreePath: string,
+): Promise<GateResult> => {
+  const gResult = await exec(["bash", "-lc", gate.cmd], { cwd: worktreePath });
+  return {
+    name: gate.name,
+    exitCode: gResult.code,
+    stdout: gResult.stdout,
+    stderr: gResult.stderr,
+    passed: gResult.code === 0,
+  };
+};
+
+/** Execute git commit in the worktree. */
+export const executeCommit = async (
+  worktreePath: string,
+  storyId: string,
+  storyTitle: string,
+  prdPath: string,
+): Promise<{ success: boolean; message: string }> => {
+  await exec(["git", "add", "-A"], { cwd: worktreePath });
+  const commitMsg = `feat: ${storyId} - ${storyTitle}`;
+  const commitResult = await exec(["git", "commit", "-m", commitMsg, "--allow-empty"], {
+    cwd: worktreePath,
+  });
+  if (commitResult.code !== 0) {
+    return { success: false, message: commitResult.stderr ?? "commit failed" };
+  }
+  // Commit the updated prd.json too (will be updated by caller)
+  await exec(["git", "add", prdPath], { cwd: worktreePath });
+  await exec(["git", "commit", "-m", `chore: mark ${storyId} as passed`], {
+    cwd: worktreePath,
+  });
+  return { success: true, message: "committed" };
+};
+
+// ---------------------------------------------------------------------------
+// Core loop (reducer dispatch)
 // ---------------------------------------------------------------------------
 
 export type RalphRunArgs = {
@@ -260,7 +435,17 @@ export type RalphRunArgs = {
   readonly debug?: boolean;
 };
 
-export const runRalphLoop = async (args: RalphRunArgs): Promise<RalphState> => {
+/** Signal set by SIGINT handler to pause the loop. */
+let pauseRequested = false;
+
+export const requestPause = () => { pauseRequested = true; };
+export const clearPause = () => { pauseRequested = false; };
+
+/** Run the reducer dispatch loop from a given Thread. */
+const runLoop = async (
+  thread: RalphThread,
+  args: RalphRunArgs,
+): Promise<RalphState> => {
   const { config, worktreePath, repoRoot, gitCommonDir, gitDir, agent, debug } = args;
   const ralphDir = pathJoin(worktreePath, ".macbox", "ralph");
   await ensureDir(ralphDir);
@@ -270,214 +455,351 @@ export const runRalphLoop = async (args: RalphRunArgs): Promise<RalphState> => {
     throw new Error("ralph: no agent command configured (use --agent or --cmd)");
   }
 
-  let prd = args.prd;
   const prdPath = args.prdPath ?? pathJoin(worktreePath, "prd.json");
   // Write the working copy of prd.json if it does not exist at the expected location
   try {
     await Deno.stat(prdPath);
   } catch {
+    const prd = threadToPrd(thread);
     await Deno.writeTextFile(prdPath, JSON.stringify(prd, null, 2) + "\n", { create: true });
   }
 
-  const iterations: IterationResult[] = [];
-  let terminationReason: TerminationReason = "running";
-  const startedAt = isoNow();
+  // Build the prompt function for the reducer
+  const buildPromptFn = (prd: Prd, story: Story, iteration: number): string => {
+    if (config.promptTemplate) return config.promptTemplate;
+    return buildPromptFromThread(thread, story, iteration, config);
+  };
 
-  for (let iteration = 1; iteration <= config.maxIterations; iteration++) {
-    const story = selectNextStory(prd);
-    if (!story) {
-      terminationReason = "all_passed";
+  // Tracking for backward-compat derived state
+  let currentStory: Story | null = null;
+  let iterationGateResults: GateResult[] = [];
+  let iterationCommitted = false;
+
+  while (true) {
+    // Check for pause between iterations
+    if (pauseRequested) {
+      pauseRequested = false;
+      thread = appendEvent(thread, mkEvent("thread_completed", { reason: "paused" }));
+      await persistThread(ralphDir, thread);
       break;
     }
 
-    console.error(
-      `ralph: iteration ${iteration}/${config.maxIterations} - story ${story.id}: ${story.title}`,
-    );
+    const intent = determineNextStep(thread, config, buildPromptFn);
 
-    const iterStartedAt = isoNow();
+    switch (intent.kind) {
+      // -------------------------------------------------------------------
+      case "run_agent": {
+        const { story, prompt, iteration } = intent;
+        currentStory = story;
+        iterationGateResults = [];
+        iterationCommitted = false;
 
-    // Read accumulated progress and truncate to last 5 entries for the prompt
-    const rawProgress = await readProgressFile(ralphDir);
-    const progress = truncateProgress(rawProgress, 5);
+        console.error(
+          `ralph: iteration ${iteration}/${config.maxIterations} - story ${story.id}: ${story.title}`,
+        );
 
-    const prompt = config.promptTemplate ?? buildPrompt(prd, story, progress, iteration, config);
+        // Append iteration_started
+        thread = appendEvent(thread, mkEvent("iteration_started", {
+          iteration,
+          storyId: story.id,
+          storyTitle: story.title,
+        }));
 
-    // Build sandbox env with ralph-specific vars
-    const env: Record<string, string> = { ...(args.env ?? {}) };
-    env["MACBOX_RALPH_ITERATION"] = String(iteration);
-    env["MACBOX_RALPH_STORY_ID"] = story.id;
-    env["MACBOX_RALPH_MAX_ITERATIONS"] = String(config.maxIterations);
+        // Append agent_dispatched
+        thread = appendEvent(thread, mkEvent("agent_dispatched", {
+          storyId: story.id,
+          iteration,
+        }));
 
-    // Run agent inside sandbox
-    const agentCmd = [...baseCommand, prompt];
-    let agentResult: { code: number; stdout?: string; stderr?: string };
-    try {
-      agentResult = await executeSandboxRun({
-        worktreePath,
-        repoRoot,
-        gitCommonDir,
-        gitDir,
-        agent,
-        profiles: args.profiles,
-        caps: args.caps,
-        command: agentCmd,
-        env,
-        debug,
-        capture: true,
-        stream: true,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`ralph: agent invocation failed: ${msg}`);
-      agentResult = { code: 1, stdout: "", stderr: msg };
-    }
+        // Build sandbox env
+        const env: Record<string, string> = { ...(args.env ?? {}) };
+        env["MACBOX_RALPH_ITERATION"] = String(iteration);
+        env["MACBOX_RALPH_STORY_ID"] = story.id;
+        env["MACBOX_RALPH_MAX_ITERATIONS"] = String(config.maxIterations);
 
-    // Check for completion signal
-    const completionSignal = detectCompletionSignal(agentResult.stdout ?? "");
-    if (completionSignal) {
-      const iterResult: IterationResult = {
-        iteration,
-        storyId: story.id,
-        storyTitle: story.title,
-        agentExitCode: agentResult.code,
-        agentStdout: agentResult.stdout,
-        gateResults: [],
-        allGatesPassed: true,
-        committed: false,
-        completionSignal: true,
-        startedAt: iterStartedAt,
-        completedAt: isoNow(),
-      };
-      iterations.push(iterResult);
-      await appendProgress(ralphDir, iteration, story, [], false);
-      terminationReason = "completion_signal";
-      break;
-    }
+        // Execute agent
+        let agentResult: AgentExecResult;
+        try {
+          agentResult = await executeAgentInSandbox({
+            baseCommand,
+            prompt,
+            worktreePath,
+            repoRoot,
+            gitCommonDir,
+            gitDir,
+            agent,
+            profiles: args.profiles,
+            caps: args.caps,
+            env,
+            debug,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          thread = appendEvent(thread, mkEvent("error", {
+            source: "agent_invocation",
+            message: msg,
+            recoverable: true,
+          }));
+          console.error(`ralph: agent invocation failed: ${msg}`);
+          agentResult = { code: 1, stdout: "", stderr: msg };
+        }
 
-    // Run quality gates outside sandbox
-    const gateResults: GateResult[] = [];
-    let allGatesPassed = agentResult.code === 0;
-    if (!allGatesPassed) {
-      console.error(`ralph: agent exited with code ${agentResult.code}`);
-    } else {
-      for (const gate of config.qualityGates) {
-        const gResult = await exec(["bash", "-lc", gate.cmd], { cwd: worktreePath });
-        const passed = gResult.code === 0;
-        gateResults.push({
-          name: gate.name,
-          exitCode: gResult.code,
-          stdout: gResult.stdout,
-          stderr: gResult.stderr,
-          passed,
-        });
-        if (!passed) {
-          console.error(`ralph: gate '${gate.name}' failed (exit ${gResult.code})`);
+        // Check for completion signal
+        const completionSignal = detectCompletionSignal(agentResult.stdout ?? "");
+
+        // Append agent_completed
+        thread = appendEvent(thread, mkEvent("agent_completed", {
+          storyId: story.id,
+          exitCode: agentResult.code,
+          stdout: agentResult.stdout,
+          stderr: agentResult.stderr,
+          completionSignal,
+        }));
+
+        // If agent failed (no gates to run), complete iteration
+        if (agentResult.code !== 0 && !completionSignal) {
+          console.error(`ralph: agent exited with code ${agentResult.code}`);
+          thread = appendEvent(thread, mkEvent("iteration_completed", {
+            iteration,
+            storyId: story.id,
+            allGatesPassed: false,
+          }));
+
+          // Write backward-compat files
+          await appendProgressFile(ralphDir, iteration, story, [], false);
+          await persistState(ralphDir, threadToState(thread));
+          await persistThread(ralphDir, thread);
+
+          // Delay before next iteration
+          if (config.delayBetweenIterationsMs > 0) {
+            await new Promise((r) => setTimeout(r, config.delayBetweenIterationsMs));
+          }
+          continue;
+        }
+
+        // If completion signal, complete iteration and break
+        if (completionSignal) {
+          thread = appendEvent(thread, mkEvent("iteration_completed", {
+            iteration,
+            storyId: story.id,
+            allGatesPassed: true,
+          }));
+          thread = appendEvent(thread, mkEvent("thread_completed", {
+            reason: "completion_signal",
+          }));
+          await appendProgressFile(ralphDir, iteration, story, [], false);
+          await persistState(ralphDir, threadToState(thread));
+          await persistThread(ralphDir, thread);
+          break;
+        }
+
+        // Continue to let reducer decide next step (gates or commit)
+        await persistThread(ralphDir, thread);
+        continue;
+      }
+
+      // -------------------------------------------------------------------
+      case "run_gate": {
+        const { gate, storyId, gateIndex } = intent;
+
+        thread = appendEvent(thread, mkEvent("gate_started", {
+          storyId,
+          gateName: gate.name,
+          gateIndex,
+        }));
+
+        const result = await executeQualityGate(gate, worktreePath);
+        iterationGateResults.push(result);
+
+        thread = appendEvent(thread, mkEvent("gate_completed", {
+          storyId,
+          gateIndex,
+          result,
+        }));
+
+        if (!result.passed) {
+          console.error(`ralph: gate '${gate.name}' failed (exit ${result.exitCode})`);
           if (!gate.continueOnFail) {
-            allGatesPassed = false;
-            break;
+            // Gate failed, non-continuable: complete the iteration as failed
+            const iterEvent = thread.events.findLast((e) => e.type === "iteration_started");
+            const iteration = (iterEvent?.data.iteration as number) ?? 1;
+            thread = appendEvent(thread, mkEvent("iteration_completed", {
+              iteration,
+              storyId,
+              allGatesPassed: false,
+            }));
+
+            if (currentStory) {
+              await appendProgressFile(ralphDir, iteration, currentStory, iterationGateResults, false);
+            }
+            await persistState(ralphDir, threadToState(thread));
+            await persistThread(ralphDir, thread);
+
+            // Delay before next iteration
+            if (config.delayBetweenIterationsMs > 0) {
+              await new Promise((r) => setTimeout(r, config.delayBetweenIterationsMs));
+            }
+            continue;
           }
         }
-      }
-    }
 
-    // Commit and mark story as passed if all gates passed
-    let committed = false;
-    if (allGatesPassed) {
-      if (config.commitOnPass) {
+        // Check if all gates done (reducer will handle more gates or proceed)
+        await persistThread(ralphDir, thread);
+        continue;
+      }
+
+      // -------------------------------------------------------------------
+      case "commit": {
+        const { storyId, storyTitle } = intent;
+
         try {
-          await exec(["git", "add", "-A"], { cwd: worktreePath });
-          const commitMsg = `feat: ${story.id} - ${story.title}`;
-          const commitResult = await exec(["git", "commit", "-m", commitMsg, "--allow-empty"], {
-            cwd: worktreePath,
-          });
-          if (commitResult.code === 0) {
-            committed = true;
-            prd = await updatePrdFile(prdPath, story.id);
-            // Commit the updated prd.json too
-            await exec(["git", "add", prdPath], { cwd: worktreePath });
-            await exec(["git", "commit", "-m", `chore: mark ${story.id} as passed`], {
-              cwd: worktreePath,
-            });
+          const commitResult = await executeCommit(worktreePath, storyId, storyTitle, prdPath);
+          if (commitResult.success) {
+            iterationCommitted = true;
+            await updatePrdFile(prdPath, storyId);
           } else {
-            console.error(`ralph: git commit failed: ${commitResult.stderr}`);
+            thread = appendEvent(thread, mkEvent("error", {
+              source: "commit",
+              message: commitResult.message,
+              recoverable: true,
+            }));
+            console.error(`ralph: git commit failed: ${commitResult.message}`);
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
+          thread = appendEvent(thread, mkEvent("error", {
+            source: "commit",
+            message: msg,
+            recoverable: true,
+          }));
           console.error(`ralph: commit error: ${msg}`);
         }
-      } else {
-        try {
-          prd = await updatePrdFile(prdPath, story.id);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.error(`ralph: failed to update prd.json: ${msg}`);
+
+        thread = appendEvent(thread, mkEvent("commit_completed", {
+          storyId,
+          success: iterationCommitted,
+        }));
+
+        await persistThread(ralphDir, thread);
+        continue;
+      }
+
+      // -------------------------------------------------------------------
+      case "mark_passed": {
+        const { storyId } = intent;
+
+        // Update prd.json on disk if not yet done via commit path
+        if (!iterationCommitted) {
+          try {
+            await updatePrdFile(prdPath, storyId);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            thread = appendEvent(thread, mkEvent("error", {
+              source: "mark_passed",
+              message: msg,
+              recoverable: true,
+            }));
+            console.error(`ralph: failed to update prd.json: ${msg}`);
+          }
         }
+
+        thread = appendEvent(thread, mkEvent("story_passed", { storyId }));
+
+        // Complete the iteration
+        const iterEvent = thread.events.findLast((e) => e.type === "iteration_started");
+        const iteration = (iterEvent?.data.iteration as number) ?? 1;
+        thread = appendEvent(thread, mkEvent("iteration_completed", {
+          iteration,
+          storyId,
+          allGatesPassed: true,
+        }));
+
+        // Write backward-compat files
+        if (currentStory) {
+          await appendProgressFile(ralphDir, iteration, currentStory, iterationGateResults, iterationCommitted);
+        }
+        await persistState(ralphDir, threadToState(thread));
+        await persistThread(ralphDir, thread);
+
+        // Delay before next iteration
+        if (config.delayBetweenIterationsMs > 0) {
+          await new Promise((r) => setTimeout(r, config.delayBetweenIterationsMs));
+        }
+        continue;
+      }
+
+      // -------------------------------------------------------------------
+      case "request_human_input": {
+        const { reason, context } = intent;
+        thread = appendEvent(thread, mkEvent("human_input_requested", { reason, context }));
+        thread = appendEvent(thread, mkEvent("thread_completed", { reason: "human_input" }));
+        await persistThread(ralphDir, thread);
+        await persistState(ralphDir, threadToState(thread));
+        break;
+      }
+
+      // -------------------------------------------------------------------
+      case "complete": {
+        const { reason } = intent;
+        // Only append thread_completed if not already present
+        const lastEv = thread.events.at(-1);
+        if (!lastEv || lastEv.type !== "thread_completed") {
+          thread = appendEvent(thread, mkEvent("thread_completed", { reason }));
+        }
+        await persistThread(ralphDir, thread);
+        break;
+      }
+
+      // -------------------------------------------------------------------
+      case "wait_delay": {
+        // This should not normally be reached in the dispatch loop.
+        // Safety: small delay to prevent busy-wait.
+        await new Promise((r) => setTimeout(r, 100));
+        continue;
       }
     }
 
-    const iterResult: IterationResult = {
-      iteration,
-      storyId: story.id,
-      storyTitle: story.title,
-      agentExitCode: agentResult.code,
-      agentStdout: agentResult.stdout,
-      gateResults,
-      allGatesPassed,
-      committed,
-      completionSignal: false,
-      startedAt: iterStartedAt,
-      completedAt: isoNow(),
-    };
-    iterations.push(iterResult);
-
-    await appendProgress(ralphDir, iteration, story, gateResults, committed);
-
-    // Persist state after each iteration
-    const intermediateState: RalphState = {
-      schema: "macbox.ralph.state.v1",
-      prd,
-      config,
-      iterations,
-      startedAt,
-      allStoriesPassed: allStoriesPassed(prd),
-      terminationReason: "running",
-    };
-    await persistState(ralphDir, intermediateState);
-
-    // Check if all stories now pass
-    if (allStoriesPassed(prd)) {
-      terminationReason = "all_passed";
-      break;
-    }
-
-    // Delay before next iteration (skip after last)
-    if (iteration < config.maxIterations && config.delayBetweenIterationsMs > 0) {
-      await new Promise((r) => setTimeout(r, config.delayBetweenIterationsMs));
-    }
+    // If we reach here (non-continue cases: complete, request_human_input), break
+    break;
   }
 
-  if (terminationReason === "running") {
-    terminationReason = "max_iterations";
-  }
-
-  const finalState: RalphState = {
-    schema: "macbox.ralph.state.v1",
-    prd,
-    config,
-    iterations,
-    startedAt,
-    completedAt: isoNow(),
-    allStoriesPassed: allStoriesPassed(prd),
-    terminationReason,
-  };
+  const finalState = threadToState(thread);
   await persistState(ralphDir, finalState);
 
   // Print summary
+  const prd = threadToPrd(thread);
   const passed = prd.userStories.filter((s) => s.passes).length;
   const total = prd.userStories.length;
+  const iterations = finalState.iterations.length;
   console.error(
-    `ralph: done - ${terminationReason} (${iterations.length} iterations, ${passed}/${total} stories passed)`,
+    `ralph: done - ${finalState.terminationReason} (${iterations} iterations, ${passed}/${total} stories passed)`,
   );
 
   return finalState;
+};
+
+/** Start a new Ralph loop from scratch. */
+export const runRalphLoop = async (args: RalphRunArgs): Promise<RalphState> => {
+  const thread = createThread(args.prd, args.config, {
+    worktreePath: args.worktreePath,
+    agent: args.agent,
+  });
+  return runLoop(thread, args);
+};
+
+/** Resume an existing Ralph loop from a persisted Thread. */
+export const resumeRalphLoop = async (args: RalphRunArgs): Promise<RalphState> => {
+  const ralphDir = pathJoin(args.worktreePath, ".macbox", "ralph");
+  const thread = await loadThread(ralphDir);
+  if (!thread) {
+    throw new Error("ralph: no thread.json found to resume from");
+  }
+
+  // If thread is already completed, return the derived state
+  const lastEv = thread.events.at(-1);
+  if (lastEv?.type === "thread_completed") {
+    return threadToState(thread);
+  }
+
+  return runLoop(thread, args);
 };

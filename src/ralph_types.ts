@@ -29,6 +29,8 @@ export type RalphConfig = {
   readonly delayBetweenIterationsMs: number;
   readonly commitOnPass: boolean;
   readonly promptTemplate?: string;
+  readonly requireApprovalBeforeCommit?: boolean;
+  readonly maxConsecutiveFailures?: number;
 };
 
 export type GateResult = {
@@ -57,6 +59,8 @@ export type TerminationReason =
   | "all_passed"
   | "max_iterations"
   | "completion_signal"
+  | "paused"
+  | "human_input"
   | "running";
 
 export type RalphState = {
