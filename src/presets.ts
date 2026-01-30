@@ -30,6 +30,7 @@ export type Preset = {
   readonly worktreePrefix?: string;
   readonly startPoint?: string;
   readonly ralph?: PresetRalphConfig;
+  readonly skills?: ReadonlyArray<string>;
 };
 
 export type LoadedPreset = {
@@ -199,6 +200,10 @@ const validatePreset = (raw: unknown, nameHint: string): Preset => {
     } as PresetRalphConfig;
   })();
 
+  const skills = Array.isArray(o.skills)
+    ? (o.skills.filter((x) => typeof x === "string") as string[])
+    : undefined;
+
   return {
     name,
     description,
@@ -212,6 +217,7 @@ const validatePreset = (raw: unknown, nameHint: string): Preset => {
     worktreePrefix,
     startPoint,
     ralph,
+    skills,
   };
 };
 
@@ -342,3 +348,87 @@ export const defaultPresetTemplate = (name: string): Preset => ({
   worktreePrefix: `ai-${name}`,
   startPoint: "main",
 });
+
+type SkillFrontmatter = {
+  readonly name: string;
+  readonly description: string;
+};
+
+const parseFrontmatter = (content: string): SkillFrontmatter | null => {
+  const lines = content.split("\n");
+  if (lines[0]?.trim() !== "---") return null;
+  let endIdx = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i]?.trim() === "---") {
+      endIdx = i;
+      break;
+    }
+  }
+  if (endIdx < 0) return null;
+
+  let name = "";
+  let description = "";
+  for (let i = 1; i < endIdx; i++) {
+    const line = lines[i];
+    const colonIdx = line.indexOf(":");
+    if (colonIdx < 0) continue;
+    const key = line.slice(0, colonIdx).trim();
+    const val = line.slice(colonIdx + 1).trim();
+    if (key === "name") name = val;
+    else if (key === "description") description = val;
+  }
+
+  if (!name) return null;
+  return { name, description };
+};
+
+const skillNameFromPath = (p: string): string => {
+  const base = p.split("/").pop() ?? "";
+  return base.replace(/\.md$/i, "").toLowerCase();
+};
+
+export const writeSkillFiles = async (
+  worktree: string,
+  skillPaths: ReadonlyArray<string>,
+): Promise<void> => {
+  const skillsDir = `${worktree}/.macbox/home/.claude/skills`;
+  await ensureDir(skillsDir);
+
+  const entries: Array<{ name: string; description: string; path: string }> = [];
+
+  for (const sp of skillPaths) {
+    let content: string;
+    try {
+      content = await Deno.readTextFile(sp);
+    } catch {
+      console.error(`macbox: WARNING: skill file not found: ${sp}`);
+      continue;
+    }
+
+    const fm = parseFrontmatter(content);
+    const name = fm?.name ?? skillNameFromPath(sp);
+    const description = fm?.description ?? "";
+    const destPath = `${skillsDir}/${name}.md`;
+    await Deno.writeTextFile(destPath, content, { create: true });
+    entries.push({ name, description, path: `~/.claude/skills/${name}.md` });
+  }
+
+  if (entries.length === 0) return;
+
+  const rows = entries
+    .map((e) => `| ${e.name} | ${e.description} | ${e.path} |`)
+    .join("\n");
+
+  const claudeMd = `# Available Skills
+
+Select the skill that matches your current task based on the descriptions below.
+To use a skill, read the full file at the listed path.
+
+| Skill | Description | Path |
+|-------|-------------|------|
+${rows}
+`;
+
+  const claudeMdPath = `${worktree}/.macbox/home/.claude/CLAUDE.md`;
+  await Deno.writeTextFile(claudeMdPath, claudeMd, { create: true });
+};

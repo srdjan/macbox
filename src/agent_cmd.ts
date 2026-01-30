@@ -29,6 +29,7 @@ import {
   type LoadedPreset,
   validatePresetPaths,
   writeAgentConfig,
+  writeSkillFiles,
 } from "./presets.ts";
 import { asString, boolFlag, parsePathList } from "./flags.ts";
 import { resolveAgentPath } from "./agent_detect.ts";
@@ -333,6 +334,10 @@ export const agentCmd = async (
 
   if (presetConfig?.preset.model) {
     await writeAgentConfig(wtPath, agent, presetConfig.preset.model);
+  }
+
+  if (presetConfig?.preset.skills?.length) {
+    await writeSkillFiles(wtPath, presetConfig.preset.skills);
   }
 
   // --- Print summary ---

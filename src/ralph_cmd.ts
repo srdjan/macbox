@@ -11,7 +11,7 @@ import { type AgentKind, defaultAgentProfiles } from "./agent.ts";
 import { nowCompact } from "./os.ts";
 import { loadProfilesOptional, parseProfileNames } from "./profiles.ts";
 import { saveSession } from "./sessions.ts";
-import { expandPath, loadPreset, type LoadedPreset, validatePresetPaths, writeAgentConfig } from "./presets.ts";
+import { expandPath, loadPreset, type LoadedPreset, validatePresetPaths, writeAgentConfig, writeSkillFiles } from "./presets.ts";
 import { asString, boolFlag, parsePathList } from "./flags.ts";
 import { detectAgents, pickDefaultAgent, resolveAgentPath } from "./agent_detect.ts";
 import { nextWorktreeName } from "./worktree_naming.ts";
@@ -196,6 +196,10 @@ export const ralphCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   // Write agent config for model selection
   if (presetConfig?.preset.model && agentFlag !== "custom") {
     await writeAgentConfig(wtPath, agentFlag, presetConfig.preset.model);
+  }
+
+  if (presetConfig?.preset.skills?.length) {
+    await writeSkillFiles(wtPath, presetConfig.preset.skills);
   }
 
   // Load or generate PRD

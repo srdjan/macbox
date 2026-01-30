@@ -17,6 +17,9 @@
   "env": {
     "NODE_ENV": "development"
   },
+  "skills": [
+    "/Users/srdjans/Code/_skills/functional-typescript/SKILL.md"
+  ],
   "worktreePrefix": "ai-fullstack",
   "startPoint": "main"
 }
