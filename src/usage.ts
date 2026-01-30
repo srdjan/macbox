@@ -3,14 +3,16 @@ export const printMinimalHelp = () => {
 macbox - run AI agents in a native macOS sandbox
 
 Usage:
-  macbox claude [--preset <name>] [--prompt <text>] [--ralph <prd-path>] [-- <agent args...>]
-  macbox codex  [--preset <name>] [--prompt <text>] [--ralph <prd-path>] [-- <agent args...>]
+  macbox --prompt <text>                      direct prompt (Claude)
+  macbox --ralph <prd-path>                   autonomous mode (Claude)
+  macbox claude [options] [-- <agent args>]   explicit agent
+  macbox codex  [options] [-- <agent args>]   explicit agent
 
 Examples:
-  macbox claude
-  macbox claude --prompt "fix the build"
-  macbox codex --preset fullstack-typescript
-  macbox claude --ralph prd.json
+  macbox --prompt "fix the build"
+  macbox --ralph prd.json
+  macbox claude --preset fullstack-typescript
+  macbox codex --prompt "fix the build"
 
   macbox --help-all    show all commands (presets, profiles, sessions, ...)
 `;
@@ -22,11 +24,14 @@ export const printHelp = () => {
 macbox - run AI agents in a native macOS sandbox (Seatbelt) using git worktrees
 
 Usage:
-  macbox claude [--preset <name>] [--prompt <text>] [--ralph <prd-path>] [-- <agent args...>]
-  macbox codex  [--preset <name>] [--prompt <text>] [--ralph <prd-path>] [-- <agent args...>]
+  macbox --prompt <text>                      direct prompt (Claude)
+  macbox --ralph <prd-path>                   autonomous mode (Claude)
+  macbox claude [options] [-- <agent args>]   explicit agent
+  macbox codex  [options] [-- <agent args>]   explicit agent
 
   Authentication is automatic on first use.
   Everything after -- is passed directly to the agent.
+  When no subcommand is given, Claude is used by default.
 
   --ralph accepts a path to prd.json or a free-form prompt string.
   When --ralph is set, additional flags apply: --gate, --max-iterations, --no-commit.
@@ -111,11 +116,11 @@ Notes:
     State is saved to .macbox/ralph/.
 
 Examples:
-  macbox claude
-  macbox claude --prompt "refactor the auth module"
-  macbox codex --preset fullstack-typescript
-  macbox claude --ralph prd.json --gate "test:npm test"
-  macbox claude --ralph "Add a search endpoint"
+  macbox --prompt "fix the build"
+  macbox --ralph prd.json --gate "test:npm test"
+  macbox --ralph "Add a search endpoint"
+  macbox claude --preset fullstack-typescript
+  macbox codex --prompt "fix the build"
   macbox claude --preset fullstack-typescript -- -p "fix the build"
   macbox presets list
   macbox presets show fullstack-typescript

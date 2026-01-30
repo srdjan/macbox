@@ -55,9 +55,10 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
     case "context":
       return await contextCmd(rest);
     case "help":
-    default:
       printMinimalHelp();
-      return { code: cmd === "help" ? 0 : 2 };
+      return { code: 0 };
+    default:
+      return await agentCmd("claude", argv);
   }
 };
 
