@@ -217,6 +217,9 @@ When `--ralph` is set, these additional flags apply:
 | `--gate "name:cmd"` | Add a quality gate (repeatable) |
 | `--max-iterations <N>` | Override max iterations (default: 10) |
 | `--no-commit` | Skip git commits on passing iterations |
+| `--resume` | Resume a paused Ralph session (requires `--worktree`) |
+| `--require-approval` | Pause for human approval before each commit |
+| `--max-failures <N>` | Escalate to human after N consecutive failures on the same story |
 
 ---
 
@@ -447,6 +450,9 @@ Preset search order:
     "NODE_ENV": "development",
     "DEBUG": "true"
   },
+  "skills": [
+    "/path/to/skills/functional-typescript/SKILL.md"
+  ],
   "worktreePrefix": "ai-myworkflow",
   "startPoint": "main"
 }
@@ -468,9 +474,49 @@ Field reference:
 | `capabilities.extraReadPaths` | array | Additional read-only paths |
 | `capabilities.extraWritePaths` | array | Additional writable paths |
 | `env` | object | Environment variables to inject |
+| `skills` | array | Absolute paths to SKILL.md files on the host (copied into sandbox at launch) |
 | `worktreePrefix` | string | Default worktree name prefix |
 | `startPoint` | string | Default git ref for new worktrees |
-| `ralph` | object | Ralph loop defaults (maxIterations, qualityGates, commitOnPass) |
+| `ralph` | object | Ralph loop defaults (maxIterations, qualityGates, commitOnPass, requireApprovalBeforeCommit, maxConsecutiveFailures) |
+
+### Skills in presets
+
+Presets can inject SKILL.md files into the sandbox so the agent has access to domain-specific knowledge and conventions. Each entry in the `skills` array is an absolute path to a SKILL.md file on the host filesystem.
+
+At launch, macbox:
+1. Reads each SKILL.md from the host
+2. Parses YAML frontmatter to extract `name` and `description`
+3. Copies the full file into `<worktree>/.macbox/home/.claude/skills/<name>.md`
+4. Writes a skill index to `<worktree>/.macbox/home/.claude/CLAUDE.md`
+
+The agent discovers available skills via the generated CLAUDE.md index and reads the full skill file that matches the current task.
+
+SKILL.md files should include YAML frontmatter:
+
+```markdown
+---
+name: functional-typescript
+description: Build type-safe web applications with functional TypeScript patterns
+---
+
+# Functional TypeScript Skill
+...
+```
+
+If frontmatter is missing, the skill name is derived from the filename.
+
+Example preset with skills:
+
+```json
+{
+  "name": "fullstack-typescript",
+  "agent": "claude",
+  "skills": [
+    "/Users/you/skills/functional-typescript/SKILL.md",
+    "/Users/you/skills/modern-web-designer/SKILL.md"
+  ]
+}
+```
 
 ### How preset + CLI flags interact
 
@@ -1088,12 +1134,17 @@ in-place and commits it alongside the code.
 
 ### How it works
 
+Internally, Ralph uses an event-sourced architecture: all state is stored as a
+sequence of events in a `Thread`, and a pure reducer function (`determineNextStep`)
+decides what to do next based on the event log. This makes the loop resumable
+and its behavior fully deterministic given the same event history.
+
 Each iteration of the Ralph loop:
 
 1. Selects the highest-priority incomplete story (lowest priority number,
    `passes === false`)
 2. Builds a prompt containing the story details, PRD overview with completion
-   status, and accumulated progress notes from prior iterations
+   status, and execution history from prior iterations (in XML format)
 3. Spawns a sandboxed agent with the prompt as a positional argument
 4. If the agent exits with code 0, runs quality gates outside the sandbox
 5. If all gates pass and `commitOnPass` is true, commits the work and marks
@@ -1101,11 +1152,13 @@ Each iteration of the Ralph loop:
 6. If the agent fails (non-zero exit), the story stays incomplete and will be
    retried in the next iteration
 
-The loop terminates when one of three conditions is met:
+The loop terminates when one of these conditions is met:
 
 - **all_passed**: every story's `passes` field is `true`
 - **max_iterations**: the iteration limit was reached (default: 10)
 - **completion_signal**: the agent output `<promise>COMPLETE</promise>`
+- **paused**: the user pressed Ctrl-C (SIGINT) during execution
+- **human_input**: the loop escalated to a human (approval gate or consecutive failures)
 
 ### Quality gates
 
@@ -1131,12 +1184,51 @@ Ralph persists its state in the worktree under `.macbox/ralph/` (gitignored):
 
 | File | Contents |
 |------|----------|
-| `state.json` | Full iteration history, PRD state, config |
-| `progress.txt` | Append-only iteration log, fed back into agent prompts |
+| `thread.json` | Event-sourced log of all loop events (primary state) |
+| `state.json` | Derived iteration history, PRD state, config (backward compat) |
+| `progress.txt` | Append-only iteration log (backward compat) |
+
+The `thread.json` file is the source of truth. All other state files are derived
+from it. The thread enables pause/resume: when you resume a session, Ralph reads
+the thread and the reducer picks up exactly where execution left off.
 
 The `prd.json` file is updated in-place as stories pass and committed alongside
 the code. This means you can inspect `prd.json` at any point to see which
 stories have been completed.
+
+### Pause and resume
+
+Press **Ctrl-C** (SIGINT) during a Ralph run to pause gracefully. Ralph will
+finish the current operation (agent execution, gate, or commit), persist the
+thread, and exit with termination reason `paused`.
+
+To resume:
+
+```bash
+macbox --ralph prd.json --resume --worktree <name>
+```
+
+The `--resume` flag requires `--worktree` so Ralph knows which worktree to
+load the thread from. If no positional prompt is given, Ralph loads the PRD
+from the worktree's `prd.json`.
+
+### Human-in-the-loop
+
+Ralph supports three ways to involve a human during execution:
+
+**Approval before commit.** Pass `--require-approval` (or set
+`requireApprovalBeforeCommit: true` in a preset's `ralph` config). After all
+quality gates pass, Ralph pauses and waits for human confirmation before
+committing. Resume with `--resume` to continue.
+
+**Consecutive failure escalation.** Pass `--max-failures N` (or set
+`maxConsecutiveFailures` in config). If the agent fails N times in a row on the
+same story, Ralph pauses and requests human input instead of retrying blindly.
+
+**Agent-initiated input request.** If the agent outputs a
+`<request-input>reason</request-input>` tag in its stdout, Ralph pauses the
+loop and records the reason. On resume, the user is prompted to provide input
+on stdin, which is appended to the thread before the loop continues.
 
 ### Ralph in flows
 
@@ -1200,7 +1292,9 @@ Presets can include a `ralph` field with default loop configuration:
       { "name": "typecheck", "cmd": "npx tsc --noEmit" },
       { "name": "test", "cmd": "npm test" }
     ],
-    "commitOnPass": true
+    "commitOnPass": true,
+    "requireApprovalBeforeCommit": false,
+    "maxConsecutiveFailures": 3
   }
 }
 ```

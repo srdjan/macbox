@@ -105,6 +105,11 @@ macbox claude --profile host-tools,host-ssh
 
 # Collect sandbox denial logs
 macbox claude --trace
+
+# Ralph: pause/resume and human-in-the-loop
+macbox --ralph prd.json --resume --worktree ralph-ts-1
+macbox --ralph prd.json --require-approval
+macbox --ralph prd.json --max-failures 3
 ```
 
 ### Clean up worktrees
@@ -245,6 +250,30 @@ macbox presets edit my-preset
 macbox presets delete my-preset
 ```
 
+### Skills in presets
+
+Presets can reference SKILL.md files from the host filesystem. At launch, macbox reads each file, copies it into the sandbox, and writes a skill index into the sandbox's `CLAUDE.md`. The agent discovers available skills via the index and reads the full file for whichever skill matches the current task.
+
+Each SKILL.md should have YAML frontmatter with `name` and `description` fields:
+
+```markdown
+---
+name: functional-typescript
+description: Build type-safe web applications with functional TypeScript patterns
+---
+
+# Functional TypeScript Skill
+...
+```
+
+At launch, macbox:
+1. Reads each SKILL.md from the host path
+2. Parses frontmatter to extract `name` and `description`
+3. Copies the full file into `<worktree>/.macbox/home/.claude/skills/<name>.md`
+4. Writes a skill index to `<worktree>/.macbox/home/.claude/CLAUDE.md`
+
+The agent sees the CLAUDE.md via Claude Code's normal discovery (HOME is `.macbox/home`, so `~/.claude/CLAUDE.md` resolves there).
+
 Presets are stored in `~/.config/macbox/presets/<name>.json`.
 
 Preset search order:
@@ -272,6 +301,9 @@ Preset search order:
   "env": {
     "NODE_ENV": "development"
   },
+  "skills": [
+    "/path/to/skills/functional-typescript/SKILL.md"
+  ],
   "worktreePrefix": "ai-mypreset",
   "startPoint": "main",
   "ralph": {
@@ -279,7 +311,9 @@ Preset search order:
     "qualityGates": [
       { "name": "typecheck", "cmd": "npx tsc --noEmit" }
     ],
-    "commitOnPass": true
+    "commitOnPass": true,
+    "requireApprovalBeforeCommit": false,
+    "maxConsecutiveFailures": 3
   }
 }
 ```
@@ -293,9 +327,10 @@ Preset fields:
 - `profiles`: Array of profile names to compose
 - `capabilities`: Network, exec, and filesystem permissions
 - `env`: Environment variables to inject into the sandbox
+- `skills`: Array of absolute paths to SKILL.md files on the host (copied into the sandbox at launch)
 - `worktreePrefix`: Default worktree name prefix (e.g., `ai-mypreset` becomes `ai-mypreset-ai`)
 - `startPoint`: Default git ref for new worktrees
-- `ralph`: Optional Ralph loop configuration (see the Ralph section in the user guide)
+- `ralph`: Optional Ralph loop configuration (see the Ralph section in the user guide). Fields: `maxIterations`, `qualityGates`, `commitOnPass`, `requireApprovalBeforeCommit`, `maxConsecutiveFailures`
 
 ---
 

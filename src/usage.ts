@@ -34,7 +34,8 @@ Usage:
   When no subcommand is given, Claude is used by default.
 
   --ralph accepts a path to prd.json or a free-form prompt string.
-  When --ralph is set, additional flags apply: --gate, --max-iterations, --no-commit.
+  When --ralph is set, additional flags apply: --gate, --max-iterations, --no-commit,
+    --resume, --require-approval, --max-failures.
 
   Advanced flags (not shown in basic help):
     [--profile <name[,name2...]>] [--worktree <name>] [--branch <branch>]
