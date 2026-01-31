@@ -29,8 +29,6 @@ import {
   loadPreset,
   type LoadedPreset,
   validatePresetPaths,
-  writeAgentConfig,
-  writeSkillFiles,
 } from "./presets.ts";
 import { asString, boolFlag, parsePathList } from "./flags.ts";
 import { detectAgents, pickDefaultAgent, resolveAgentPath } from "./agent_detect.ts";
@@ -99,9 +97,7 @@ export const agentCmd = async (
     presetConfig = await loadPreset(presetName);
   }
 
-  // --- Resolve command override (CLI > preset) ---
-  cmdOverride = cmdOverride ?? presetConfig?.preset.cmd;
-
+  // --- Resolve command override (CLI) ---
   if (cmdOverride) {
     const looksLikePath = cmdOverride.includes("/") || cmdOverride.startsWith(".");
     if (looksLikePath) {
@@ -329,14 +325,6 @@ export const agentCmd = async (
     for (const [k, v] of Object.entries(presetConfig.preset.env)) env[k] = v;
   }
   await augmentPathForHostTools(env, profileNames, Deno.env.get("HOME") ?? "");
-
-  if (presetConfig?.preset.model) {
-    await writeAgentConfig(wtPath, effectiveAgent, presetConfig.preset.model);
-  }
-
-  if (presetConfig?.preset.skills?.length) {
-    await writeSkillFiles(wtPath, presetConfig.preset.skills);
-  }
 
   // --- Print summary ---
   console.log(`macbox: ${effectiveAgent}`);

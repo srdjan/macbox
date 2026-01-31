@@ -9,37 +9,15 @@ export type PresetCapabilities = {
   readonly extraWritePaths?: ReadonlyArray<string>;
 };
 
-export type PresetMultiAgentConfig = {
-  readonly enabled?: boolean;
-  readonly agentA?: AgentKind;
-  readonly agentB?: AgentKind;
-  readonly cmdA?: string;
-  readonly cmdB?: string;
-};
-
-export type PresetRalphConfig = {
-  readonly maxIterations?: number;
-  readonly qualityGates?: ReadonlyArray<{ readonly name: string; readonly cmd: string; readonly continueOnFail?: boolean }>;
-  readonly delayBetweenIterationsMs?: number;
-  readonly commitOnPass?: boolean;
-  readonly promptTemplate?: string;
-  readonly multiAgent?: PresetMultiAgentConfig;
-};
-
 export type Preset = {
   readonly name: string;
   readonly description?: string;
   readonly agent?: AgentKind;
-  readonly model?: string;
-  readonly apiKeyEnv?: string;
-  readonly cmd?: string;
   readonly profiles?: ReadonlyArray<string>;
   readonly capabilities?: PresetCapabilities;
   readonly env?: Readonly<Record<string, string>>;
   readonly worktreePrefix?: string;
   readonly startPoint?: string;
-  readonly ralph?: PresetRalphConfig;
-  readonly skills?: ReadonlyArray<string>;
 };
 
 export type LoadedPreset = {
@@ -147,9 +125,6 @@ const validatePreset = (raw: unknown, nameHint: string): Preset => {
   const description =
     typeof o.description === "string" ? o.description : undefined;
   const agent = isValidAgent(o.agent) ? o.agent : undefined;
-  const model = typeof o.model === "string" ? o.model : undefined;
-  const apiKeyEnv = typeof o.apiKeyEnv === "string" ? o.apiKeyEnv : undefined;
-  const cmd = typeof o.cmd === "string" ? o.cmd : undefined;
 
   const profiles = Array.isArray(o.profiles)
     ? (o.profiles.filter((x) => typeof x === "string") as string[])
@@ -187,59 +162,15 @@ const validatePreset = (raw: unknown, nameHint: string): Preset => {
   const startPoint =
     typeof o.startPoint === "string" ? o.startPoint : undefined;
 
-  const ralph = (() => {
-    if (o.ralph === null || typeof o.ralph !== "object") return undefined;
-    const r = o.ralph as Record<string, unknown>;
-    const gates = Array.isArray(r.qualityGates)
-      ? (r.qualityGates as unknown[]).filter(
-          (g): g is Record<string, unknown> =>
-            !!g && typeof g === "object" && typeof (g as Record<string, unknown>).name === "string" && typeof (g as Record<string, unknown>).cmd === "string",
-        ).map((g) => ({
-          name: g.name as string,
-          cmd: g.cmd as string,
-          continueOnFail: typeof g.continueOnFail === "boolean" ? g.continueOnFail : undefined,
-        }))
-      : undefined;
-    const multiAgent = (() => {
-      if (!r.multiAgent || typeof r.multiAgent !== "object") return undefined;
-      const m = r.multiAgent as Record<string, unknown>;
-      return {
-        enabled: typeof m.enabled === "boolean" ? m.enabled : undefined,
-        agentA: typeof m.agentA === "string" ? m.agentA as AgentKind : undefined,
-        agentB: typeof m.agentB === "string" ? m.agentB as AgentKind : undefined,
-        cmdA: typeof m.cmdA === "string" ? m.cmdA : undefined,
-        cmdB: typeof m.cmdB === "string" ? m.cmdB : undefined,
-      } as PresetMultiAgentConfig;
-    })();
-
-    return {
-      maxIterations: typeof r.maxIterations === "number" ? r.maxIterations : undefined,
-      qualityGates: gates,
-      delayBetweenIterationsMs: typeof r.delayBetweenIterationsMs === "number" ? r.delayBetweenIterationsMs : undefined,
-      commitOnPass: typeof r.commitOnPass === "boolean" ? r.commitOnPass : undefined,
-      promptTemplate: typeof r.promptTemplate === "string" ? r.promptTemplate : undefined,
-      multiAgent,
-    } as PresetRalphConfig;
-  })();
-
-  const skills = Array.isArray(o.skills)
-    ? (o.skills.filter((x) => typeof x === "string") as string[])
-    : undefined;
-
   return {
     name,
     description,
     agent,
-    model,
-    apiKeyEnv,
-    cmd,
     profiles,
     capabilities,
     env,
     worktreePrefix,
     startPoint,
-    ralph,
-    skills,
   };
 };
 
@@ -329,32 +260,6 @@ export const validatePresetPaths = async (
   return warnings;
 };
 
-export const writeAgentConfig = async (
-  worktree: string,
-  agent: AgentKind,
-  model: string
-): Promise<void> => {
-  const home = `${worktree}/.macbox/home`;
-
-  if (agent === "claude") {
-    const configDir = `${home}/.claude`;
-    await ensureDir(configDir);
-    const config = { model };
-    await Deno.writeTextFile(
-      `${configDir}/settings.json`,
-      JSON.stringify(config, null, 2) + "\n"
-    );
-  } else if (agent === "codex") {
-    const configDir = `${home}/.codex`;
-    await ensureDir(configDir);
-    const config = { model };
-    await Deno.writeTextFile(
-      `${configDir}/config.json`,
-      JSON.stringify(config, null, 2) + "\n"
-    );
-  }
-};
-
 export const defaultPresetTemplate = (name: string): Preset => ({
   name,
   description: "",
@@ -370,87 +275,3 @@ export const defaultPresetTemplate = (name: string): Preset => ({
   worktreePrefix: `ai-${name}`,
   startPoint: "main",
 });
-
-type SkillFrontmatter = {
-  readonly name: string;
-  readonly description: string;
-};
-
-const parseFrontmatter = (content: string): SkillFrontmatter | null => {
-  const lines = content.split("\n");
-  if (lines[0]?.trim() !== "---") return null;
-  let endIdx = -1;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i]?.trim() === "---") {
-      endIdx = i;
-      break;
-    }
-  }
-  if (endIdx < 0) return null;
-
-  let name = "";
-  let description = "";
-  for (let i = 1; i < endIdx; i++) {
-    const line = lines[i];
-    const colonIdx = line.indexOf(":");
-    if (colonIdx < 0) continue;
-    const key = line.slice(0, colonIdx).trim();
-    const val = line.slice(colonIdx + 1).trim();
-    if (key === "name") name = val;
-    else if (key === "description") description = val;
-  }
-
-  if (!name) return null;
-  return { name, description };
-};
-
-const skillNameFromPath = (p: string): string => {
-  const base = p.split("/").pop() ?? "";
-  return base.replace(/\.md$/i, "").toLowerCase();
-};
-
-export const writeSkillFiles = async (
-  worktree: string,
-  skillPaths: ReadonlyArray<string>,
-): Promise<void> => {
-  const skillsDir = `${worktree}/.macbox/home/.claude/skills`;
-  await ensureDir(skillsDir);
-
-  const entries: Array<{ name: string; description: string; path: string }> = [];
-
-  for (const sp of skillPaths) {
-    let content: string;
-    try {
-      content = await Deno.readTextFile(sp);
-    } catch {
-      console.error(`macbox: WARNING: skill file not found: ${sp}`);
-      continue;
-    }
-
-    const fm = parseFrontmatter(content);
-    const name = fm?.name ?? skillNameFromPath(sp);
-    const description = fm?.description ?? "";
-    const destPath = `${skillsDir}/${name}.md`;
-    await Deno.writeTextFile(destPath, content, { create: true });
-    entries.push({ name, description, path: `~/.claude/skills/${name}.md` });
-  }
-
-  if (entries.length === 0) return;
-
-  const rows = entries
-    .map((e) => `| ${e.name} | ${e.description} | ${e.path} |`)
-    .join("\n");
-
-  const claudeMd = `# Available Skills
-
-Select the skill that matches your current task based on the descriptions below.
-To use a skill, read the full file at the listed path.
-
-| Skill | Description | Path |
-|-------|-------------|------|
-${rows}
-`;
-
-  const claudeMdPath = `${worktree}/.macbox/home/.claude/CLAUDE.md`;
-  await Deno.writeTextFile(claudeMdPath, claudeMd, { create: true });
-};

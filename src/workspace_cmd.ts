@@ -6,7 +6,7 @@ import { sandboxEnv } from "./env.ts";
 import { defaultAgentProfiles } from "./agent.ts";
 import type { AgentKind } from "./agent.ts";
 import { loadProfiles, parseProfileNames } from "./profiles.ts";
-import { expandPath, loadPreset, type LoadedPreset, writeAgentConfig } from "./presets.ts";
+import { expandPath, loadPreset, type LoadedPreset } from "./presets.ts";
 import { saveSession, loadSessionById } from "./sessions.ts";
 import { repoIdForRoot } from "./paths.ts";
 import {
@@ -111,11 +111,6 @@ const workspaceNew = async (
 
   const mergedExtraRead = [...presetExtraRead, ...cliExtraRead];
   const mergedExtraWrite = [...presetExtraWrite, ...cliExtraWrite];
-
-  // Write agent config if model specified
-  if (presetConfig?.preset.model && agentFlag !== "custom") {
-    await writeAgentConfig(wtPath, agentFlag, presetConfig.preset.model);
-  }
 
   // Create session
   const session = await saveSession({
