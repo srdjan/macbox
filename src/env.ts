@@ -41,5 +41,15 @@ export const sandboxEnv = (worktreePath: string, agent?: AgentKind): Record<stri
     env.CODEX_HOME = `${home}/.codex`;
   }
 
+  // Pass through API keys from host environment if present
+  const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (anthropicKey) {
+    env.ANTHROPIC_API_KEY = anthropicKey;
+  }
+  const openaiKey = Deno.env.get("OPENAI_API_KEY");
+  if (openaiKey) {
+    env.OPENAI_API_KEY = openaiKey;
+  }
+
   return env;
 };

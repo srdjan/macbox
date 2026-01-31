@@ -14,19 +14,49 @@ const pathExists = async (p: string): Promise<boolean> => {
 
 /** Check if the agent likely has valid credentials on the host. */
 export const hasCredentials = async (agent: AgentKind): Promise<boolean> => {
-  const home = Deno.env.get("HOME") ?? "";
-
   if (agent === "claude") {
-    if (Deno.env.get("ANTHROPIC_API_KEY")) return true;
-    // Claude Code stores internal auth state under ~/.claude/
-    if (home && await pathExists(`${home}/.claude`)) return true;
+    // Check for ANTHROPIC_API_KEY first
+    const hasKey = !!Deno.env.get("ANTHROPIC_API_KEY");
+    if (hasKey) return true;
+
+    // Check for existing Claude session/OAuth token in ~/.claude
+    const home = Deno.env.get("HOME");
+    if (home) {
+      const claudeDir = `${home}/.claude`;
+      try {
+        const stat = await Deno.stat(claudeDir);
+        if (stat.isDirectory) {
+          // If ~/.claude exists and has been used recently (has files), assume authenticated
+          try {
+            const entries = [];
+            for await (const entry of Deno.readDir(claudeDir)) {
+              entries.push(entry);
+              if (entries.length > 0) return true; // Has session files
+            }
+          } catch {
+            // Can't read directory, fall through to show API key message
+          }
+        }
+      } catch {
+        // ~/.claude doesn't exist
+      }
+    }
+
+    console.error("macbox: ANTHROPIC_API_KEY not set and no existing Claude session found");
+    console.error("  Set it in your shell profile:");
+    console.error("    export ANTHROPIC_API_KEY=sk-ant-...");
+    console.error("  Or get your key from: https://console.anthropic.com/settings/keys");
     return false;
   }
 
   if (agent === "codex") {
-    if (Deno.env.get("OPENAI_API_KEY")) return true;
-    if (home && await pathExists(`${home}/.codex/auth.json`)) return true;
-    return false;
+    const hasKey = !!Deno.env.get("OPENAI_API_KEY");
+    if (!hasKey) {
+      console.error("macbox: OPENAI_API_KEY not set");
+      console.error("  Set it in your shell profile:");
+      console.error("    export OPENAI_API_KEY=sk-...");
+    }
+    return hasKey;
   }
 
   // custom agent: skip auth check

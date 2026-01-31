@@ -1,9 +1,13 @@
 {
   "name": "host-claude",
-  "description": "Read-only access to host Claude CLI install (for ~/.local/bin and NVM Node). Includes Mach lookup for system services.",
+  "description": "Access to host Claude CLI install (for ~/.local/bin and NVM Node). Includes Mach lookup for system services and read/write access to ~/.claude for session management.",
   "read_paths": [
     "~/.local/bin",
-    "~/.nvm"
+    "~/.nvm",
+    "~/.claude"
+  ],
+  "write_paths": [
+    "~/.claude"
   ],
   "mach_lookup": true
 }

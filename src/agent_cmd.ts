@@ -193,6 +193,11 @@ export const agentCmd = async (
       autoProfile = effectiveAgent === "claude" ? "host-claude" : "host-tools";
       cmdOverride = resolved;
       console.log(`macbox: auto-enabled ${autoProfile} profile (agent under HOME)`);
+    } else if (effectiveAgent === "claude") {
+      // Always enable host-claude for Claude regardless of install location
+      // since Claude needs ~/.claude access for session management
+      autoProfile = "host-claude";
+      console.log(`macbox: auto-enabled ${autoProfile} profile`);
     }
   }
 
@@ -268,6 +273,22 @@ export const agentCmd = async (
   await ensureDir(`${mp}/logs`);
   await ensureGitignoreInmacbox(wtPath);
 
+  // Symlink host ~/.claude into sandbox home so Claude CLI can find session auth
+  const hostHome = Deno.env.get("HOME") ?? "";
+  const hostClaudeDir = `${hostHome}/.claude`;
+  const sandboxClaudeLink = `${mp}/home/.claude`;
+  try {
+    await Deno.stat(hostClaudeDir);
+    try {
+      await Deno.remove(sandboxClaudeLink, { recursive: true });
+    } catch {
+      // Link doesn't exist yet, that's fine
+    }
+    await Deno.symlink(hostClaudeDir, sandboxClaudeLink);
+  } catch {
+    // Host .claude doesn't exist, skip symlinking
+  }
+
   // --- Load profiles ---
   const agentProfiles = defaultAgentProfiles(effectiveAgent);
   const profileFlag = asString(a.flags.profile);
@@ -340,7 +361,7 @@ export const agentCmd = async (
   // At this point, --prompt is guaranteed (--ralph already returned above).
   const baseCmd = cmdOverride ? [cmdOverride] : [...defaultAgentCmd(effectiveAgent, true)];
   if (effectiveAgent === "claude" && cmdOverride) {
-    baseCmd.push("-p", "--dangerously-skip-permissions");
+    baseCmd.push("-p", "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions");
   }
   const passthrough = a.passthrough;
   const fullCmd = baseCmd.length > 0
