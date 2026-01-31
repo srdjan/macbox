@@ -1,6 +1,6 @@
 // Agent command handler.
 // Resolves agent from preset/config/auto-detect, then runs in sandbox.
-// Requires --prompt or --ralph.
+// Requires --prompt.
 
 import { parseArgs } from "./mini_args.ts";
 import { detectRepo, ensureWorktree } from "./git.ts";
@@ -37,7 +37,6 @@ import { detectAgents, pickDefaultAgent, resolveAgentPath } from "./agent_detect
 import { nextWorktreeName } from "./worktree_naming.ts";
 import { loadMacboxConfig } from "./flow_config.ts";
 import { ensureAuthenticated } from "./auto_auth.ts";
-import { ralphCmd } from "./ralph_cmd.ts";
 import type { Exit } from "./main.ts";
 
 const mergeProfiles = (
@@ -54,47 +53,6 @@ const mergeProfiles = (
   return [...set.values()];
 };
 
-const pushFlag = (
-  argv: string[],
-  name: string,
-  value: string | boolean | undefined,
-) => {
-  if (value === undefined) return;
-  if (typeof value === "boolean") {
-    if (value) argv.push(`--${name}`);
-    return;
-  }
-  argv.push(`--${name}`, value);
-};
-
-/** Build argv for ralphCmd from agent_cmd parsed flags. */
-const buildRalphArgv = (
-  ralphTarget: string,
-  a: ReturnType<typeof parseArgs>,
-): string[] => {
-  const argv: string[] = [ralphTarget];
-  // Forward shared flags
-  pushFlag(argv, "preset", asString(a.flags.preset));
-  pushFlag(argv, "profile", asString(a.flags.profile));
-  pushFlag(argv, "worktree", asString(a.flags.worktree));
-  pushFlag(argv, "branch", asString(a.flags.branch));
-  pushFlag(argv, "cmd", asString(a.flags.cmd));
-  pushFlag(argv, "debug", a.flags.debug);
-  pushFlag(argv, "trace", a.flags.trace);
-  pushFlag(argv, "json", a.flags.json);
-  pushFlag(argv, "repo", asString(a.flags.repo));
-  pushFlag(argv, "base", asString(a.flags.base));
-  // Forward ralph-specific flags
-  pushFlag(argv, "gate", asString(a.flags.gate));
-  pushFlag(argv, "max-iterations", asString(a.flags["max-iterations"]));
-  pushFlag(argv, "no-commit", a.flags["no-commit"]);
-  // Forward passthrough
-  if (a.passthrough.length) {
-    argv.push("--", ...a.passthrough);
-  }
-  return argv;
-};
-
 const isAgent = (v: string): v is AgentKind =>
   v === "claude" || v === "codex" || v === "custom";
 
@@ -104,19 +62,17 @@ export const agentCmd = async (
   const a = parseArgs(argv);
 
   // --- Primary flags ---
-  const ralphTarget = asString(a.flags.ralph);
   const promptRaw = a.flags.prompt;
   if (promptRaw === true) {
     throw new Error("macbox: --prompt requires a value");
   }
   const prompt = asString(promptRaw);
 
-  // --- Require --prompt or --ralph ---
-  if (!ralphTarget && !prompt) {
+  // --- Require --prompt ---
+  if (!prompt) {
     throw new Error(
-      "macbox: --prompt or --ralph is required.\n" +
-      '  macbox --prompt "fix the build"\n' +
-      "  macbox --ralph prd.json",
+      "macbox: --prompt is required.\n" +
+      '  macbox --prompt "fix the build"',
     );
   }
 
@@ -202,11 +158,6 @@ export const agentCmd = async (
   // --- Auto-authenticate ---
   const exe = cmdOverride ?? effectiveAgent;
   await ensureAuthenticated(effectiveAgent, exe);
-
-  // --- Ralph dispatch ---
-  if (ralphTarget) {
-    return await ralphCmd(buildRalphArgv(ralphTarget, a));
-  }
 
   // --- Validate preset paths ---
   if (presetConfig) {
@@ -353,7 +304,7 @@ export const agentCmd = async (
   });
 
   // --- Build command ---
-  // At this point, --prompt is guaranteed (--ralph already returned above).
+  // At this point, --prompt is guaranteed (required above).
   const baseCmd = cmdOverride ? [cmdOverride] : [...defaultAgentCmd(effectiveAgent, true)];
   if (effectiveAgent === "claude" && cmdOverride) {
     baseCmd.push("-p", "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions");
