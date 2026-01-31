@@ -22,25 +22,21 @@ Deno.test("createWorkspace creates valid record", async () => {
   await withTempBase(async (base) => {
     const ws = await createWorkspace({
       baseDir: base,
-      projectId: "abc123def456",
+      repoId: "abc123def456",
       sessionId: "abc123def456/ws-test",
       worktreeName: "ws-test",
       worktreePath: "/tmp/wt/ws-test",
       name: "test workspace",
-      parent: { branch: "main", issue: 42 },
     });
 
     assert(ws.id.startsWith("ws-"), "expected ws- prefix");
     assert(ws.id.length === 11, "expected 11-char id (ws- + 8 hex)");
-    assert(ws.projectId === "abc123def456", "expected projectId");
+    assert(ws.repoId === "abc123def456", "expected repoId");
     assert(ws.sessionId === "abc123def456/ws-test", "expected sessionId");
     assert(ws.worktreeName === "ws-test", "expected worktreeName");
-    assert(ws.status === "active", "expected active status");
-    assert(ws.parent.branch === "main", "expected parent branch");
-    assert(ws.parent.issue === 42, "expected parent issue");
     assert(ws.name === "test workspace", "expected name");
-    assert(ws.flowsRun.length === 0, "expected empty flowsRun");
     assert(ws.createdAt.length > 0, "expected createdAt");
+    assert(ws.lastAccessedAt.length > 0, "expected lastAccessedAt");
   });
 });
 
@@ -48,7 +44,7 @@ Deno.test("loadWorkspace reads persisted record", async () => {
   await withTempBase(async (base) => {
     const ws = await createWorkspace({
       baseDir: base,
-      projectId: "abc123def456",
+      repoId: "abc123def456",
       sessionId: "abc123def456/ws-test",
       worktreeName: "ws-test",
       worktreePath: "/tmp/wt/ws-test",
@@ -56,7 +52,7 @@ Deno.test("loadWorkspace reads persisted record", async () => {
 
     const loaded = await loadWorkspace({
       baseDir: base,
-      projectId: "abc123def456",
+      repoId: "abc123def456",
       workspaceId: ws.id,
     });
 
@@ -65,65 +61,31 @@ Deno.test("loadWorkspace reads persisted record", async () => {
   });
 });
 
-Deno.test("listWorkspaces returns workspaces sorted by updatedAt desc", async () => {
+Deno.test("listWorkspaces returns workspaces sorted by lastAccessedAt desc", async () => {
   await withTempBase(async (base) => {
     await createWorkspace({
       baseDir: base,
-      projectId: "abc123def456",
+      repoId: "abc123def456",
       sessionId: "abc123def456/ws-one",
       worktreeName: "ws-one",
       worktreePath: "/tmp/wt/ws-one",
     });
 
-    // Small delay to ensure different updatedAt
+    // Small delay to ensure different lastAccessedAt
     await new Promise((r) => setTimeout(r, 10));
 
     await createWorkspace({
       baseDir: base,
-      projectId: "abc123def456",
+      repoId: "abc123def456",
       sessionId: "abc123def456/ws-two",
       worktreeName: "ws-two",
       worktreePath: "/tmp/wt/ws-two",
     });
 
-    const all = await listWorkspaces({ baseDir: base, projectId: "abc123def456" });
+    const all = await listWorkspaces({ baseDir: base, repoId: "abc123def456" });
     assert(all.length === 2, "expected 2 workspaces");
     assert(all[0].worktreeName === "ws-two", "expected ws-two first (most recent)");
     assert(all[1].worktreeName === "ws-one", "expected ws-one second");
-  });
-});
-
-Deno.test("listWorkspaces filters by status", async () => {
-  await withTempBase(async (base) => {
-    const ws = await createWorkspace({
-      baseDir: base,
-      projectId: "abc123def456",
-      sessionId: "abc123def456/ws-one",
-      worktreeName: "ws-one",
-      worktreePath: "/tmp/wt/ws-one",
-    });
-
-    await updateWorkspace({
-      baseDir: base,
-      workspace: ws,
-      updates: { status: "archived" },
-    });
-
-    await createWorkspace({
-      baseDir: base,
-      projectId: "abc123def456",
-      sessionId: "abc123def456/ws-two",
-      worktreeName: "ws-two",
-      worktreePath: "/tmp/wt/ws-two",
-    });
-
-    const active = await listWorkspaces({ baseDir: base, projectId: "abc123def456", status: "active" });
-    assert(active.length === 1, "expected 1 active workspace");
-    assert(active[0].worktreeName === "ws-two", "expected ws-two active");
-
-    const archived = await listWorkspaces({ baseDir: base, projectId: "abc123def456", status: "archived" });
-    assert(archived.length === 1, "expected 1 archived workspace");
-    assert(archived[0].worktreeName === "ws-one", "expected ws-one archived");
   });
 });
 
@@ -131,7 +93,7 @@ Deno.test("findLatestWorkspace returns most recent", async () => {
   await withTempBase(async (base) => {
     await createWorkspace({
       baseDir: base,
-      projectId: "abc123def456",
+      repoId: "abc123def456",
       sessionId: "abc123def456/ws-one",
       worktreeName: "ws-one",
       worktreePath: "/tmp/wt/ws-one",
@@ -141,13 +103,13 @@ Deno.test("findLatestWorkspace returns most recent", async () => {
 
     const second = await createWorkspace({
       baseDir: base,
-      projectId: "abc123def456",
+      repoId: "abc123def456",
       sessionId: "abc123def456/ws-two",
       worktreeName: "ws-two",
       worktreePath: "/tmp/wt/ws-two",
     });
 
-    const latest = await findLatestWorkspace({ baseDir: base, projectId: "abc123def456" });
+    const latest = await findLatestWorkspace({ baseDir: base, repoId: "abc123def456" });
     assert(latest !== null, "expected to find latest");
     assert(latest!.id === second.id, "expected second workspace as latest");
   });
@@ -157,13 +119,13 @@ Deno.test("findWorkspaceById searches across projects", async () => {
   await withTempBase(async (base) => {
     const ws = await createWorkspace({
       baseDir: base,
-      projectId: "abc123def456",
+      repoId: "abc123def456",
       sessionId: "abc123def456/ws-one",
       worktreeName: "ws-one",
       worktreePath: "/tmp/wt/ws-one",
     });
 
-    // Search without projectId
+    // Search without repoId
     const found = await findWorkspaceById({ baseDir: base, workspaceId: ws.id });
     assert(found !== null, "expected to find workspace");
     assert(found!.id === ws.id, "expected matching id");
@@ -173,37 +135,29 @@ Deno.test("findWorkspaceById searches across projects", async () => {
   });
 });
 
-Deno.test("updateWorkspace changes status and preserves other fields", async () => {
+Deno.test("updateWorkspace changes name and updates lastAccessedAt", async () => {
   await withTempBase(async (base) => {
     const ws = await createWorkspace({
       baseDir: base,
-      projectId: "abc123def456",
+      repoId: "abc123def456",
       sessionId: "abc123def456/ws-one",
       worktreeName: "ws-one",
       worktreePath: "/tmp/wt/ws-one",
       name: "original name",
-      parent: { branch: "main", issue: 42 },
     });
+
+    await new Promise((r) => setTimeout(r, 10));
 
     const updated = await updateWorkspace({
       baseDir: base,
       workspace: ws,
       updates: {
-        status: "archived",
-        archive: {
-          archivedAt: new Date().toISOString(),
-          branchPointer: "macbox/ws-one",
-          worktreeEvicted: false,
-        },
+        name: "updated name",
       },
     });
 
-    assert(updated.status === "archived", "expected archived status");
-    assert(updated.archive !== undefined, "expected archive record");
-    assert(updated.archive!.branchPointer === "macbox/ws-one", "expected branch pointer");
-    assert(updated.name === "original name", "expected name preserved");
-    assert(updated.parent.issue === 42, "expected issue preserved");
-    assert(updated.updatedAt > ws.updatedAt, "expected updatedAt advanced");
+    assert(updated.name === "updated name", "expected name updated");
+    assert(updated.lastAccessedAt > ws.lastAccessedAt, "expected lastAccessedAt advanced");
   });
 });
 
@@ -211,7 +165,7 @@ Deno.test("deleteWorkspace removes the file", async () => {
   await withTempBase(async (base) => {
     const ws = await createWorkspace({
       baseDir: base,
-      projectId: "abc123def456",
+      repoId: "abc123def456",
       sessionId: "abc123def456/ws-one",
       worktreeName: "ws-one",
       worktreePath: "/tmp/wt/ws-one",
@@ -219,11 +173,11 @@ Deno.test("deleteWorkspace removes the file", async () => {
 
     await deleteWorkspace({
       baseDir: base,
-      projectId: "abc123def456",
+      repoId: "abc123def456",
       workspaceId: ws.id,
     });
 
-    const all = await listWorkspaces({ baseDir: base, projectId: "abc123def456" });
+    const all = await listWorkspaces({ baseDir: base, repoId: "abc123def456" });
     assert(all.length === 0, "expected empty after delete");
   });
 });

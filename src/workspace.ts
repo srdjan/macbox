@@ -2,39 +2,15 @@ import { atomicWriteJson } from "./fs.ts";
 import { pathJoin } from "./os.ts";
 import { workspaceDirForProject, workspaceFileFor, workspacesDir } from "./paths.ts";
 
-export type WorkspaceStatus = "active" | "archived";
-
-export type WorkspaceParent = {
-  readonly branch?: string;
-  readonly issue?: number;
-  readonly issueTitle?: string;
-};
-
-export type FlowRunEntry = {
-  readonly flowName: string;
-  readonly runAt: string;
-  readonly exitCode: number;
-};
-
-export type ArchiveRecord = {
-  readonly archivedAt: string;
-  readonly branchPointer?: string;
-  readonly worktreeEvicted: boolean;
-};
-
 export type WorkspaceRecord = {
   readonly id: string;
-  readonly projectId: string;
+  readonly repoId: string;
   readonly sessionId: string;
   readonly worktreeName: string;
   readonly worktreePath: string;
   readonly name?: string;
-  readonly status: WorkspaceStatus;
-  readonly parent: WorkspaceParent;
-  readonly flowsRun: ReadonlyArray<FlowRunEntry>;
-  readonly archive?: ArchiveRecord;
   readonly createdAt: string;
-  readonly updatedAt: string;
+  readonly lastAccessedAt: string;
 };
 
 const isoNow = () => new Date().toISOString();
@@ -55,19 +31,18 @@ const readJson = async (p: string): Promise<unknown> => {
 const isWorkspace = (v: unknown): v is WorkspaceRecord =>
   !!v && typeof v === "object" &&
   typeof (v as Record<string, unknown>).id === "string" &&
-  typeof (v as Record<string, unknown>).projectId === "string" &&
+  typeof (v as Record<string, unknown>).repoId === "string" &&
   typeof (v as Record<string, unknown>).sessionId === "string" &&
-  typeof (v as Record<string, unknown>).worktreeName === "string" &&
-  typeof (v as Record<string, unknown>).status === "string";
+  typeof (v as Record<string, unknown>).worktreeName === "string";
 
 export const saveWorkspace = async (args: {
   readonly baseDir: string;
   readonly workspace: WorkspaceRecord;
 }): Promise<WorkspaceRecord> => {
-  const filePath = workspaceFileFor(args.baseDir, args.workspace.projectId, args.workspace.id);
+  const filePath = workspaceFileFor(args.baseDir, args.workspace.repoId, args.workspace.id);
   const rec: WorkspaceRecord = {
     ...args.workspace,
-    updatedAt: isoNow(),
+    lastAccessedAt: isoNow(),
   };
   await atomicWriteJson(filePath, rec);
   return rec;
@@ -75,36 +50,32 @@ export const saveWorkspace = async (args: {
 
 export const createWorkspace = async (args: {
   readonly baseDir: string;
-  readonly projectId: string;
+  readonly repoId: string;
   readonly sessionId: string;
   readonly worktreeName: string;
   readonly worktreePath: string;
   readonly name?: string;
-  readonly parent?: WorkspaceParent;
 }): Promise<WorkspaceRecord> => {
   const now = isoNow();
   const rec: WorkspaceRecord = {
     id: newWorkspaceId(),
-    projectId: args.projectId,
+    repoId: args.repoId,
     sessionId: args.sessionId,
     worktreeName: args.worktreeName,
     worktreePath: args.worktreePath,
     name: args.name,
-    status: "active",
-    parent: args.parent ?? {},
-    flowsRun: [],
     createdAt: now,
-    updatedAt: now,
+    lastAccessedAt: now,
   };
   return await saveWorkspace({ baseDir: args.baseDir, workspace: rec });
 };
 
 export const loadWorkspace = async (args: {
   readonly baseDir: string;
-  readonly projectId: string;
+  readonly repoId: string;
   readonly workspaceId: string;
 }): Promise<WorkspaceRecord> => {
-  const p = workspaceFileFor(args.baseDir, args.projectId, args.workspaceId);
+  const p = workspaceFileFor(args.baseDir, args.repoId, args.workspaceId);
   const j = await readJson(p);
   if (!isWorkspace(j)) throw new Error(`macbox: invalid workspace file: ${p}`);
   return j;
@@ -112,14 +83,13 @@ export const loadWorkspace = async (args: {
 
 export const listWorkspaces = async (args: {
   readonly baseDir: string;
-  readonly projectId?: string;
-  readonly status?: WorkspaceStatus;
+  readonly repoId?: string;
 }): Promise<ReadonlyArray<WorkspaceRecord>> => {
   const base = workspacesDir(args.baseDir);
 
   const projectDirs: string[] = [];
-  if (args.projectId) {
-    projectDirs.push(workspaceDirForProject(args.baseDir, args.projectId));
+  if (args.repoId) {
+    projectDirs.push(workspaceDirForProject(args.baseDir, args.repoId));
   } else {
     try {
       for await (const ent of Deno.readDir(base)) {
@@ -139,7 +109,6 @@ export const listWorkspaces = async (args: {
         try {
           const j = await readJson(p);
           if (!isWorkspace(j)) continue;
-          if (args.status && j.status !== args.status) continue;
           out.push(j);
         } catch {
           // ignore invalid
@@ -150,14 +119,13 @@ export const listWorkspaces = async (args: {
     }
   }
 
-  out.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+  out.sort((a, b) => (a.lastAccessedAt < b.lastAccessedAt ? 1 : a.lastAccessedAt > b.lastAccessedAt ? -1 : 0));
   return out;
 };
 
 export const findLatestWorkspace = async (args: {
   readonly baseDir: string;
-  readonly projectId: string;
-  readonly status?: WorkspaceStatus;
+  readonly repoId: string;
 }): Promise<WorkspaceRecord | null> => {
   const xs = await listWorkspaces(args);
   return xs.length ? xs[0] : null;
@@ -166,14 +134,14 @@ export const findLatestWorkspace = async (args: {
 export const findWorkspaceById = async (args: {
   readonly baseDir: string;
   readonly workspaceId: string;
-  readonly projectId?: string;
+  readonly repoId?: string;
 }): Promise<WorkspaceRecord | null> => {
-  // If projectId is known, load directly
-  if (args.projectId) {
+  // If repoId is known, load directly
+  if (args.repoId) {
     try {
       return await loadWorkspace({
         baseDir: args.baseDir,
-        projectId: args.projectId,
+        repoId: args.repoId,
         workspaceId: args.workspaceId,
       });
     } catch {
@@ -187,22 +155,22 @@ export const findWorkspaceById = async (args: {
 
 export const deleteWorkspace = async (args: {
   readonly baseDir: string;
-  readonly projectId: string;
+  readonly repoId: string;
   readonly workspaceId: string;
 }): Promise<void> => {
-  const p = workspaceFileFor(args.baseDir, args.projectId, args.workspaceId);
+  const p = workspaceFileFor(args.baseDir, args.repoId, args.workspaceId);
   await Deno.remove(p);
 };
 
 export const updateWorkspace = async (args: {
   readonly baseDir: string;
   readonly workspace: WorkspaceRecord;
-  readonly updates: Partial<Pick<WorkspaceRecord, "status" | "name" | "flowsRun" | "archive">>;
+  readonly updates: Partial<Pick<WorkspaceRecord, "name">>;
 }): Promise<WorkspaceRecord> => {
   const updated: WorkspaceRecord = {
     ...args.workspace,
     ...args.updates,
-    updatedAt: isoNow(),
+    lastAccessedAt: isoNow(),
   };
   return await saveWorkspace({ baseDir: args.baseDir, workspace: updated });
 };
