@@ -1,7 +1,6 @@
 import type { StepDef } from "./flow_config.ts";
 import { exec, mustExec } from "./exec.ts";
 import { executeSandboxRun, type SandboxRunRequest } from "./sandbox_run.ts";
-import { loadSkillByName, expandSkill } from "./skills.ts";
 import type { AgentKind } from "./agent.ts";
 import { defaultAgentCmd } from "./agent.ts";
 import type { SessionCaps } from "./sessions.ts";
@@ -227,39 +226,6 @@ const agentRunStep: StepHandler = async (step, ctx) => {
   }
 };
 
-const skillStep = async (
-  skillName: string,
-  step: StepDef,
-  ctx: StepContext,
-): Promise<StepResult> => {
-  const startedAt = isoNow();
-  try {
-    const skill = await loadSkillByName(ctx.worktreePath, skillName);
-    const expanded = expandSkill(skill, ctx.worktreePath);
-    const skillArgs = step.args?.skillArgs;
-    const cmd = Array.isArray(skillArgs)
-      ? [...expanded.command, ...skillArgs.filter((x) => typeof x === "string") as string[]]
-      : expanded.command;
-
-    const result = await executeSandboxRun({
-      worktreePath: ctx.worktreePath,
-      repoRoot: ctx.repoRoot,
-      gitCommonDir: ctx.gitCommonDir,
-      gitDir: ctx.gitDir,
-      agent: ctx.agent,
-      profiles: ctx.profiles,
-      caps: ctx.caps,
-      command: [...cmd],
-      env: { ...ctx.env, ...expanded.env },
-      debug: ctx.debug,
-      capture: true,
-    });
-    return wrapResult(step, startedAt, result);
-  } catch (err) {
-    return wrapError(step, startedAt, err);
-  }
-};
-
 // --- Output helpers ---
 
 const parseJsonOutputs = (
@@ -363,12 +329,6 @@ export const executeStep = async (
   step: StepDef,
   ctx: StepContext,
 ): Promise<StepResult> => {
-  // Check for skills:<name> prefix
-  if (step.type.startsWith("skills:")) {
-    const skillName = step.type.slice("skills:".length);
-    return await skillStep(skillName, step, ctx);
-  }
-
   const handler = builtinHandlers[step.type];
   if (!handler) {
     return {

@@ -3,7 +3,6 @@ import { parseArgs } from "./mini_args.ts";
 import { cleanCmd } from "./clean.ts";
 import { profilesCmd } from "./profiles_cmd.ts";
 import { sessionsCmd } from "./sessions_cmd.ts";
-import { skillsCmd } from "./skills_cmd.ts";
 import { presetsCmd } from "./presets_cmd.ts";
 import { workspaceCmd } from "./workspace_cmd.ts";
 import { flowCmd } from "./flow_cmd.ts";
@@ -45,8 +44,6 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
       return await profilesCmd(rest);
     case "sessions":
       return await sessionsCmd(rest);
-    case "skills":
-      return await skillsCmd(rest);
     case "presets":
       return await presetsCmd(rest);
     case "workspace":
