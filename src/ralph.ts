@@ -606,7 +606,7 @@ const runLoop = async (
 
   const baseCommand = args.command ?? defaultAgentCmd(agent, true);
   if (baseCommand.length === 0) {
-    throw new Error("ralph: no agent command configured (use --agent or --cmd)");
+    throw new Error("ralph: no agent command configured (use a preset or --cmd)");
   }
 
   const prdPath = args.prdPath ?? pathJoin(worktreePath, "prd.json");
