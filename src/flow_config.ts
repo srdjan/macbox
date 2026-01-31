@@ -14,16 +14,9 @@ export type FlowDef = {
   readonly steps: ReadonlyArray<StepDef>;
 };
 
-export type HooksDef = {
-  readonly onWorkspaceCreate?: ReadonlyArray<StepDef>;
-  readonly onWorkspaceRestore?: ReadonlyArray<StepDef>;
-  readonly onFlowComplete?: ReadonlyArray<StepDef>;
-};
-
 export type MacboxConfig = {
   readonly schema: "macbox.config.v1";
   readonly flows?: Record<string, FlowDef>;
-  readonly hooks?: HooksDef;
   readonly defaults?: {
     readonly agent?: AgentKind;
     readonly preset?: string;
@@ -71,21 +64,6 @@ const validateFlow = (raw: unknown, name: string): FlowDef => {
   };
 };
 
-const validateHooks = (raw: unknown): HooksDef => {
-  if (!isObj(raw)) return {};
-  return {
-    onWorkspaceCreate: raw.onWorkspaceCreate
-      ? validateSteps(raw.onWorkspaceCreate, "hooks.onWorkspaceCreate")
-      : undefined,
-    onWorkspaceRestore: raw.onWorkspaceRestore
-      ? validateSteps(raw.onWorkspaceRestore, "hooks.onWorkspaceRestore")
-      : undefined,
-    onFlowComplete: raw.onFlowComplete
-      ? validateSteps(raw.onFlowComplete, "hooks.onFlowComplete")
-      : undefined,
-  };
-};
-
 const validateConfig = (raw: unknown): MacboxConfig => {
   if (!isObj(raw)) {
     throw new Error("macbox.json: expected an object at root");
@@ -97,8 +75,6 @@ const validateConfig = (raw: unknown): MacboxConfig => {
       flows[name] = validateFlow(def, name);
     }
   }
-
-  const hooks = isObj(raw.hooks) ? validateHooks(raw.hooks) : undefined;
 
   const defaults = isObj(raw.defaults)
     ? {
@@ -119,7 +95,6 @@ const validateConfig = (raw: unknown): MacboxConfig => {
   return {
     schema: "macbox.config.v1",
     flows: Object.keys(flows).length ? flows : undefined,
-    hooks,
     defaults,
   };
 };

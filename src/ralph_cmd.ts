@@ -16,7 +16,6 @@ import { asString, boolFlag, parsePathList } from "./flags.ts";
 import { detectAgents, pickDefaultAgent, resolveAgentPath } from "./agent_detect.ts";
 import { nextWorktreeName } from "./worktree_naming.ts";
 import { loadMacboxConfig } from "./flow_config.ts";
-import { findProjectByPath } from "./project.ts";
 import { runRalphLoop, resumeRalphLoop, loadPrdFromFile, promptToPrd, parseRalphConfig, requestPause, clearPause } from "./ralph.ts";
 import type { MultiAgentConfig, Prd, QualityGate, RalphConfig } from "./ralph_types.ts";
 import { defaultRalphConfig, PHASE_ORDER } from "./ralph_types.ts";
@@ -81,11 +80,10 @@ export const ralphCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   // Detect repo
   const repo = await detectRepo(repoHint);
   const config = await loadMacboxConfig(repo.root, repo.root);
-  const project = await findProjectByPath(repo.root);
 
-  // Resolve agent: preset > macbox.json defaults > project > auto-detect
+  // Resolve agent: preset > macbox.json defaults > auto-detect
   const agentRaw = presetConfig?.preset.agent ??
-    config?.defaults?.agent ?? project?.defaultAgent;
+    config?.defaults?.agent;
   let agent: AgentKind | undefined = agentRaw && isAgent(agentRaw) ? agentRaw : undefined;
 
   const cmdOverride = asString(a.flags.cmd) ?? presetConfig?.preset.cmd;
@@ -140,10 +138,7 @@ export const ralphCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   // Load profiles
   const agentProfiles = defaultAgentProfiles(agentFlag);
   const profileFlag = asString(a.flags.profile);
-  const defaultProfiles = [
-    ...(config?.defaults?.profiles ?? []),
-    ...(project?.defaultProfiles ?? []),
-  ];
+  const defaultProfiles = config?.defaults?.profiles ?? [];
   const profileNames = [
     ...agentProfiles,
     ...(presetConfig?.preset.profiles ?? []),

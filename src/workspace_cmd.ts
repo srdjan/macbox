@@ -8,16 +8,14 @@ import type { AgentKind } from "./agent.ts";
 import { loadProfiles, parseProfileNames } from "./profiles.ts";
 import { expandPath, loadPreset, type LoadedPreset, writeAgentConfig } from "./presets.ts";
 import { saveSession, loadSessionById } from "./sessions.ts";
-import { findOrCreateProject } from "./project.ts";
+import { repoIdForRoot } from "./paths.ts";
 import {
   createWorkspace,
   findWorkspaceById,
   listWorkspaces,
   updateWorkspace,
 } from "./workspace.ts";
-import { createContextPack } from "./context_pack.ts";
 import { loadMacboxConfig } from "./flow_config.ts";
-import { runHook } from "./hooks.ts";
 import type { Exit } from "./main.ts";
 import { asString, boolFlag, parsePathList } from "./flags.ts";
 
@@ -67,9 +65,9 @@ const workspaceNew = async (
   const agentFlag: AgentKind = presetAgent ?? "custom";
   const agent: AgentKind | undefined = agentFlag === "custom" ? undefined : agentFlag;
 
-  // Detect repo and find/create project
+  // Detect repo and compute repoId
   const repo = await detectRepo(repoHint);
-  const project = await findOrCreateProject(repo.root);
+  const repoId = await repoIdForRoot(repo.root);
 
   // Determine worktree name
   const worktreeNameDefault = issue
@@ -144,7 +142,7 @@ const workspaceNew = async (
   // Create workspace
   const ws = await createWorkspace({
     baseDir: base,
-    projectId: project.projectId,
+    projectId: repoId,
     sessionId: session.id,
     worktreeName,
     worktreePath: wtPath,
@@ -157,7 +155,7 @@ const workspaceNew = async (
 
   console.log(`macbox: workspace created`);
   console.log(`  id:        ${ws.id}`);
-  console.log(`  project:   ${project.name} (${project.projectId})`);
+  console.log(`  repo:      ${repoId}`);
   console.log(`  worktree:  ${worktreeName}`);
   console.log(`  path:      ${wtPath}`);
   if (issue) console.log(`  issue:     #${issue}`);
@@ -178,8 +176,7 @@ const workspaceList = async (
   if (!showAll) {
     try {
       const repo = await detectRepo(repoHint);
-      const project = await findOrCreateProject(repo.root);
-      projectId = project.projectId;
+      projectId = await repoIdForRoot(repo.root);
     } catch {
       // Not in a repo, show all
     }
@@ -276,20 +273,6 @@ const workspaceArchive = async (
     return { code: 1 };
   }
 
-  // Create context pack to capture state before archiving
-  let contextPackId: string | undefined;
-  try {
-    const pack = await createContextPack({
-      worktreePath: ws.worktreePath,
-      workspaceId: ws.id,
-    });
-    contextPackId = pack.packId;
-    console.log(`macbox: context pack created: ${pack.packId}`);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`macbox: warning: failed to create context pack: ${msg}`);
-  }
-
   // Evict worktree from disk if requested
   if (evict) {
     try {
@@ -307,12 +290,10 @@ const workspaceArchive = async (
     workspace: ws,
     updates: {
       status: "archived",
-      contextPacks: contextPackId ? [...ws.contextPacks, contextPackId] : ws.contextPacks,
       archive: {
         archivedAt: new Date().toISOString(),
         branchPointer: `macbox/${ws.worktreeName}`,
         worktreeEvicted: evict,
-        contextPackId,
       },
     },
   });
@@ -378,23 +359,6 @@ const workspaceRestore = async (
       archive: undefined,
     },
   });
-
-  // Run onWorkspaceRestore hook if defined
-  try {
-    const session = await loadSessionById({ baseDir: base, id: ws.sessionId });
-    const config = await loadMacboxConfig(ws.worktreePath, session.repoRoot);
-    if (config) {
-      await runHook("onWorkspaceRestore", config, {
-        worktreePath: ws.worktreePath,
-        repoRoot: session.repoRoot,
-        gitCommonDir: session.gitCommonDir,
-        gitDir: session.gitDir,
-        agent: session.agent,
-      });
-    }
-  } catch {
-    // Non-fatal
-  }
 
   console.log(`macbox: workspace restored: ${updated.id}`);
   return { code: 0 };

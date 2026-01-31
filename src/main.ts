@@ -5,10 +5,8 @@ import { profilesCmd } from "./profiles_cmd.ts";
 import { sessionsCmd } from "./sessions_cmd.ts";
 import { skillsCmd } from "./skills_cmd.ts";
 import { presetsCmd } from "./presets_cmd.ts";
-import { projectCmd } from "./project_cmd.ts";
 import { workspaceCmd } from "./workspace_cmd.ts";
 import { flowCmd } from "./flow_cmd.ts";
-import { contextCmd } from "./context_cmd.ts";
 import { agentCmd } from "./agent_cmd.ts";
 import { printHelp, printMinimalHelp } from "./usage.ts";
 
@@ -51,15 +49,11 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
       return await skillsCmd(rest);
     case "presets":
       return await presetsCmd(rest);
-    case "project":
-      return await projectCmd(rest);
     case "workspace":
     case "ws":
       return await workspaceCmd(rest);
     case "flow":
       return await flowCmd(rest);
-    case "context":
-      return await contextCmd(rest);
     case "help":
       printMinimalHelp();
       return { code: 0 };

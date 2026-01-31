@@ -39,7 +39,6 @@ Deno.test("createWorkspace creates valid record", async () => {
     assert(ws.parent.branch === "main", "expected parent branch");
     assert(ws.parent.issue === 42, "expected parent issue");
     assert(ws.name === "test workspace", "expected name");
-    assert(ws.contextPacks.length === 0, "expected empty contextPacks");
     assert(ws.flowsRun.length === 0, "expected empty flowsRun");
     assert(ws.createdAt.length > 0, "expected createdAt");
   });

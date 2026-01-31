@@ -36,7 +36,6 @@ import { asString, boolFlag, parsePathList } from "./flags.ts";
 import { detectAgents, pickDefaultAgent, resolveAgentPath } from "./agent_detect.ts";
 import { nextWorktreeName } from "./worktree_naming.ts";
 import { loadMacboxConfig } from "./flow_config.ts";
-import { findProjectByPath } from "./project.ts";
 import { ensureAuthenticated } from "./auto_auth.ts";
 import { ralphCmd } from "./ralph_cmd.ts";
 import type { Exit } from "./main.ts";
@@ -132,13 +131,12 @@ export const agentCmd = async (
   const trace = boolFlag(a.flags.trace, false);
   const debug = boolFlag(a.flags.debug, false) || trace;
 
-  // --- Resolve preset (CLI > macbox.json > project defaults) ---
+  // --- Resolve preset (CLI > macbox.json) ---
   const repo = await detectRepo(repoHint);
   const config = await loadMacboxConfig(repo.root, repo.root);
-  const project = await findProjectByPath(repo.root);
 
   const presetName = asString(a.flags.preset) ??
-    config?.defaults?.preset ?? project?.defaultPreset;
+    config?.defaults?.preset;
 
   let presetConfig: LoadedPreset | null = null;
   if (presetName) {
@@ -159,9 +157,9 @@ export const agentCmd = async (
     }
   }
 
-  // --- Resolve agent: preset > macbox.json defaults > project > auto-detect ---
+  // --- Resolve agent: preset > macbox.json defaults > auto-detect ---
   const agentRaw = presetConfig?.preset.agent ??
-    config?.defaults?.agent ?? project?.defaultAgent;
+    config?.defaults?.agent;
   let agent: AgentKind | undefined = agentRaw && isAgent(agentRaw) ? agentRaw : undefined;
 
   if (!agent && !cmdOverride) {
@@ -292,10 +290,7 @@ export const agentCmd = async (
   // --- Load profiles ---
   const agentProfiles = defaultAgentProfiles(effectiveAgent);
   const profileFlag = asString(a.flags.profile);
-  const defaultProfiles = [
-    ...(config?.defaults?.profiles ?? []),
-    ...(project?.defaultProfiles ?? []),
-  ];
+  const defaultProfiles = config?.defaults?.profiles ?? [];
   const profileNames = mergeProfiles(
     [
       ...agentProfiles,

@@ -20,7 +20,6 @@ export type ArchiveRecord = {
   readonly archivedAt: string;
   readonly branchPointer?: string;
   readonly worktreeEvicted: boolean;
-  readonly contextPackId?: string;
 };
 
 export type WorkspaceRecord = {
@@ -32,7 +31,6 @@ export type WorkspaceRecord = {
   readonly name?: string;
   readonly status: WorkspaceStatus;
   readonly parent: WorkspaceParent;
-  readonly contextPacks: ReadonlyArray<string>;
   readonly flowsRun: ReadonlyArray<FlowRunEntry>;
   readonly archive?: ArchiveRecord;
   readonly createdAt: string;
@@ -94,7 +92,6 @@ export const createWorkspace = async (args: {
     name: args.name,
     status: "active",
     parent: args.parent ?? {},
-    contextPacks: [],
     flowsRun: [],
     createdAt: now,
     updatedAt: now,
@@ -200,7 +197,7 @@ export const deleteWorkspace = async (args: {
 export const updateWorkspace = async (args: {
   readonly baseDir: string;
   readonly workspace: WorkspaceRecord;
-  readonly updates: Partial<Pick<WorkspaceRecord, "status" | "name" | "contextPacks" | "flowsRun" | "archive">>;
+  readonly updates: Partial<Pick<WorkspaceRecord, "status" | "name" | "flowsRun" | "archive">>;
 }): Promise<WorkspaceRecord> => {
   const updated: WorkspaceRecord = {
     ...args.workspace,

@@ -30,11 +30,6 @@ Deno.test("loadMacboxConfig loads valid config", async () => {
           ],
         },
       },
-      hooks: {
-        onWorkspaceCreate: [
-          { id: "init", type: "steps:shell", args: { cmd: "echo hello" } },
-        ],
-      },
       defaults: {
         agent: "claude",
         profiles: ["host-tools"],
@@ -52,9 +47,6 @@ Deno.test("loadMacboxConfig loads valid config", async () => {
     assert(config!.flows!["review"] !== undefined, "expected review flow");
     assert(config!.flows!["review"].steps.length === 2, "expected 2 steps");
     assert(config!.flows!["review"].description === "Review code changes", "expected description");
-    assert(config!.hooks !== undefined, "expected hooks");
-    assert(config!.hooks!.onWorkspaceCreate !== undefined, "expected onCreate hook");
-    assert(config!.hooks!.onWorkspaceCreate!.length === 1, "expected 1 hook step");
     assert(config!.defaults?.agent === "claude", "expected default agent");
     assert(config!.defaults?.profiles?.length === 1, "expected 1 default profile");
   });
@@ -159,7 +151,6 @@ Deno.test("emptyConfig returns valid empty config", () => {
   const cfg = emptyConfig();
   assert(cfg.schema === "macbox.config.v1", "expected schema");
   assert(cfg.flows === undefined, "expected no flows");
-  assert(cfg.hooks === undefined, "expected no hooks");
 });
 
 Deno.test("loadMacboxConfig handles continueOnError", async () => {
