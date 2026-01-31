@@ -15,7 +15,7 @@ import {
   listWorkspaces,
   updateWorkspace,
 } from "./workspace.ts";
-import { loadMacboxConfig } from "./flow_config.ts";
+import { loadMacboxConfig } from "./config.ts";
 import type { Exit } from "./main.ts";
 import { asString, boolFlag, parsePathList } from "./flags.ts";
 

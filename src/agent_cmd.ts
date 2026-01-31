@@ -33,7 +33,7 @@ import {
 import { asString, boolFlag, parsePathList } from "./flags.ts";
 import { detectAgents, pickDefaultAgent, resolveAgentPath } from "./agent_detect.ts";
 import { nextWorktreeName } from "./worktree_naming.ts";
-import { loadMacboxConfig } from "./flow_config.ts";
+import { loadMacboxConfig } from "./config.ts";
 import { ensureAuthenticated } from "./auto_auth.ts";
 import type { Exit } from "./main.ts";
 
