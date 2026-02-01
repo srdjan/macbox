@@ -30,7 +30,7 @@ import {
   type LoadedPreset,
   validatePresetPaths,
 } from "./presets.ts";
-import { asString, boolFlag, parsePathList } from "./flags.ts";
+import { asString, boolFlag, parseEnvPairs, parsePathList } from "./flags.ts";
 import { detectAgents, pickDefaultAgent, resolveAgentPath } from "./agent_detect.ts";
 import { nextWorktreeName } from "./worktree_naming.ts";
 import { loadMacboxConfig } from "./config.ts";
@@ -324,6 +324,8 @@ export const agentCmd = async (
   if (presetConfig?.preset.env) {
     for (const [k, v] of Object.entries(presetConfig.preset.env)) env[k] = v;
   }
+  const cliEnv = parseEnvPairs(a.flags.env as string | boolean | undefined);
+  for (const [k, v] of Object.entries(cliEnv)) env[k] = v;
   await augmentPathForHostTools(env, profileNames, Deno.env.get("HOME") ?? "");
 
   // --- Print summary ---
