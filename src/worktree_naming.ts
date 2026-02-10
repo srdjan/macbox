@@ -1,4 +1,5 @@
 import { worktreeDir } from "./paths.ts";
+import { validateWorktreePrefix } from "./validate.ts";
 
 const pathExists = async (p: string): Promise<boolean> => {
   try {
@@ -15,9 +16,10 @@ export const nextWorktreeName = async (args: {
   readonly prefix: string;
   readonly maxAttempts?: number;
 }): Promise<string> => {
+  const safePrefix = validateWorktreePrefix(args.prefix);
   const max = args.maxAttempts ?? 9999;
   for (let i = 1; i <= max; i++) {
-    const name = `${args.prefix}-${i}`;
+    const name = `${safePrefix}-${i}`;
     const dir = await worktreeDir(args.baseDir, args.repoRoot, name);
     if (!(await pathExists(dir))) return name;
   }

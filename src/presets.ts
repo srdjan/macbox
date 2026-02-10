@@ -1,5 +1,4 @@
 import { pathJoin } from "./os.ts";
-import { ensureDir } from "./fs.ts";
 import type { AgentKind } from "./agent.ts";
 
 export type PresetCapabilities = {

@@ -3,7 +3,6 @@ import {
   listAvailablePresets,
   loadPreset,
 } from "./presets.ts";
-import { pathJoin } from "./os.ts";
 import { asString } from "./flags.ts";
 
 const usage = () => {

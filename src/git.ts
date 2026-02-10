@@ -29,13 +29,41 @@ export const ensureWorktree = async (
   worktreeBranch: string,
   startPoint: string = "HEAD",
 ) => {
-  // If worktreePath already exists and is a worktree, do nothing.
-  // Otherwise, create a new worktree.
-  const existing = await mustExec(["bash", "-lc", `test -d "${worktreePath}" && echo yes || echo no`], { quiet: true });
-  if (existing.trim() === "yes") {
-    // Try a lightweight check: does `.git` exist?
-    const hasGitFile = await mustExec(["bash", "-lc", `test -e "${worktreePath}/.git" && echo yes || echo no`], { quiet: true });
-    if (hasGitFile.trim() === "yes") return;
+  const absFrom = (base: string, p: string) =>
+    p.startsWith("/") ? p : `${base}/${p}`.replaceAll("//", "/");
+
+  const rootGitCommonDir = absFrom(
+    root,
+    await mustExec(["git", "rev-parse", "--git-common-dir"], { cwd: root, label: "git-common-dir" }),
+  );
+
+  // If worktreePath already exists and belongs to this repo, do nothing.
+  try {
+    const st = await Deno.stat(worktreePath);
+    if (!st.isDirectory) {
+      throw new Error(`worktree path exists but is not a directory: ${worktreePath}`);
+    }
+    const wtGitCommonDirRaw = await mustExec([
+      "git",
+      "-C",
+      worktreePath,
+      "rev-parse",
+      "--git-common-dir",
+    ], { quiet: true });
+    const wtGitCommonDir = absFrom(worktreePath, wtGitCommonDirRaw);
+    if (wtGitCommonDir === rootGitCommonDir) {
+      return;
+    }
+    throw new Error(
+      `worktree path already exists and belongs to a different repository: ${worktreePath}`,
+    );
+  } catch (err) {
+    if (!(err instanceof Deno.errors.NotFound)) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("belongs to a different repository") || msg.includes("is not a directory")) {
+        throw new Error(`macbox: ${msg}`);
+      }
+    }
   }
 
   await mustExec(["mkdir", "-p", worktreePath], { quiet: true });

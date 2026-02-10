@@ -2,6 +2,7 @@ import { atomicWriteJson } from "./fs.ts";
 import { pathJoin } from "./os.ts";
 import { repoIdForRoot, sessionFileFor } from "./paths.ts";
 import type { AgentKind } from "./agent.ts";
+import { parseSessionId, validateWorktreeName } from "./validate.ts";
 
 export type SessionCaps = {
   readonly network: boolean;
@@ -50,9 +51,10 @@ export const saveSession = async (args: {
   readonly lastCommand?: ReadonlyArray<string>;
   readonly lastCommandLine?: string;
 }): Promise<SessionRecord> => {
+  const safeWorktreeName = validateWorktreeName(args.worktreeName);
   const repoId = await repoIdForRoot(args.repoRoot);
-  const id = `${repoId}/${args.worktreeName}`;
-  const filePath = await sessionFileFor(args.baseDir, args.repoRoot, args.worktreeName);
+  const id = `${repoId}/${safeWorktreeName}`;
+  const filePath = await sessionFileFor(args.baseDir, args.repoRoot, safeWorktreeName);
 
   let createdAt = isoNow();
   try {
@@ -66,7 +68,7 @@ export const saveSession = async (args: {
     id,
     repoId,
     repoRoot: args.repoRoot,
-    worktreeName: args.worktreeName,
+    worktreeName: safeWorktreeName,
     worktreePath: args.worktreePath,
     gitCommonDir: args.gitCommonDir,
     gitDir: args.gitDir,
@@ -92,29 +94,27 @@ const readJson = async (p: string): Promise<unknown> => {
   return JSON.parse(s);
 };
 
-const isSession = (v: any): v is SessionRecord =>
-  v && typeof v === "object" &&
-  typeof v.id === "string" &&
-  typeof v.repoId === "string" &&
-  typeof v.repoRoot === "string" &&
-  typeof v.worktreeName === "string" &&
-  typeof v.worktreePath === "string" &&
-  typeof v.gitCommonDir === "string" &&
-  typeof v.gitDir === "string" &&
-  v.caps && typeof v.caps.network === "boolean" && typeof v.caps.exec === "boolean";
+const isObj = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === "object" && !Array.isArray(v);
+
+const isSession = (v: unknown): v is SessionRecord => {
+  if (!isObj(v)) return false;
+  const caps = v.caps;
+  if (!isObj(caps)) return false;
+  return typeof v.id === "string" &&
+    typeof v.repoId === "string" &&
+    typeof v.repoRoot === "string" &&
+    typeof v.worktreeName === "string" &&
+    typeof v.worktreePath === "string" &&
+    typeof v.gitCommonDir === "string" &&
+    typeof v.gitDir === "string" &&
+    typeof caps.network === "boolean" &&
+    typeof caps.exec === "boolean";
+};
 
 export const sessionFileFromId = (baseDir: string, id: string): string => {
-  // id can be:
-  // - "repoId/worktreeName"
-  // - "worktreeName" (resolved later with repoRoot)
-  // - "latest" (handled elsewhere)
-  if (id.includes("/")) {
-    const [repoId, ...rest] = id.split("/");
-    const wt = rest.join("/");
-    return pathJoin(baseDir, "sessions", repoId, `${wt}.json`);
-  }
-  // Fallback: treat as "worktreeName" across unknown repo => caller must resolve
-  return pathJoin(baseDir, "sessions", "__unknown__", `${id}.json`);
+  const parsed = parseSessionId(id);
+  return pathJoin(baseDir, "sessions", parsed.repoId, `${parsed.worktreeName}.json`);
 };
 
 export const loadSessionById = async (args: {
@@ -193,10 +193,10 @@ export const resolveSessionIdForRepo = async (args: {
     if (!s) throw new Error("macbox: no sessions found (latest)");
     return s.id;
   }
-  if (args.ref.includes("/")) return args.ref;
+  if (args.ref.includes("/")) return parseSessionId(args.ref).id;
   // treat as worktreeName in this repo
   const repoId = await repoIdForRoot(args.repoRoot);
-  return `${repoId}/${args.ref}`;
+  return `${repoId}/${validateWorktreeName(args.ref)}`;
 };
 
 export const deleteSession = async (args: { readonly baseDir: string; readonly id: string }) => {

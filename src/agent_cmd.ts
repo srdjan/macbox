@@ -17,7 +17,7 @@ import {
 } from "./agent.ts";
 import { formatLogShowTime, nowCompact } from "./os.ts";
 import { collectSandboxViolations } from "./sandbox_trace.ts";
-import { loadProfilesOptional, parseProfileNames } from "./profiles.ts";
+import { loadProfilesOptional } from "./profiles.ts";
 import {
   findLatestSession,
   loadSessionById,
@@ -35,6 +35,7 @@ import { detectAgents, pickDefaultAgent, resolveAgentPath } from "./agent_detect
 import { nextWorktreeName } from "./worktree_naming.ts";
 import { loadMacboxConfig } from "./config.ts";
 import { ensureAuthenticated } from "./auto_auth.ts";
+import { validateWorktreeName, validateWorktreePrefix } from "./validate.ts";
 import type { Exit } from "./main.ts";
 
 const mergeProfiles = (
@@ -84,6 +85,7 @@ export const agentCmd = async (
   let cmdOverride = asString(cmdFlagRaw);
   const trace = boolFlag(a.flags.trace, false);
   const debug = boolFlag(a.flags.debug, false) || trace;
+  const disableHostClaudeProfile = boolFlag(a.flags["no-host-claude-profile"], false);
 
   // --- Resolve preset (CLI > macbox.json) ---
   const repo = await detectRepo(repoHint);
@@ -142,12 +144,26 @@ export const agentCmd = async (
     if (home && resolved.startsWith(`${home}/`)) {
       autoProfile = effectiveAgent === "claude" ? "host-claude" : "host-tools";
       cmdOverride = resolved;
-      console.log(`macbox: auto-enabled ${autoProfile} profile (agent under HOME)`);
+      if (autoProfile === "host-claude" && disableHostClaudeProfile) {
+        autoProfile = null;
+      } else if (autoProfile === "host-claude") {
+        console.error(
+          "macbox: WARNING: auto-enabled host-claude profile (grants ~/.claude read/write). " +
+            "Use --no-host-claude-profile to disable.",
+        );
+      } else {
+        console.log(`macbox: auto-enabled ${autoProfile} profile (agent under HOME)`);
+      }
     } else if (effectiveAgent === "claude") {
       // Always enable host-claude for Claude regardless of install location
       // since Claude needs ~/.claude access for session management
-      autoProfile = "host-claude";
-      console.log(`macbox: auto-enabled ${autoProfile} profile`);
+      if (!disableHostClaudeProfile) {
+        autoProfile = "host-claude";
+        console.error(
+          "macbox: WARNING: auto-enabled host-claude profile (grants ~/.claude read/write). " +
+            "Use --no-host-claude-profile to disable.",
+        );
+      }
     }
   }
 
@@ -176,14 +192,15 @@ export const agentCmd = async (
 
   // --- Worktree naming (from start.ts: auto-increment) ---
   const worktreeFlag = asString(a.flags.worktree);
-  const prefix = presetConfig?.preset.worktreePrefix ??
-    `ai-${effectiveAgent}`;
+  const safeWorktreeFlag = worktreeFlag ? validateWorktreeName(worktreeFlag) : undefined;
+  const prefix = validateWorktreePrefix(presetConfig?.preset.worktreePrefix ??
+    `ai-${effectiveAgent}`);
 
   const inferredLatest = !worktreeFlag
     ? await findLatestSession({ baseDir: base, repoRoot: repo.root, agent: effectiveAgent })
     : null;
 
-  const worktreeName = worktreeFlag ?? sessionRec?.worktreeName ??
+  const worktreeName = safeWorktreeFlag ?? sessionRec?.worktreeName ??
     inferredLatest?.worktreeName ??
     await nextWorktreeName({ baseDir: base, repoRoot: repo.root, prefix });
 

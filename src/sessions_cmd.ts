@@ -5,11 +5,30 @@ import { findLatestSession, listSessions, loadSessionById, resolveSessionIdForRe
 import { asString } from "./flags.ts";
 
 export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
+  const usage = () => {
+    console.log(
+      [
+        "macbox sessions - inspect and manage saved session records",
+        "",
+        "Usage:",
+        "  macbox sessions list [--repo <path>] [--base <path>]",
+        "  macbox sessions show <id|worktreeName|latest> [--repo <path>] [--base <path>]",
+        "  macbox sessions delete <id|worktreeName> [--repo <path>] [--base <path>]",
+        "  macbox sessions clean [--all] [--repo <path>] [--base <path>]",
+      ].join("\n"),
+    );
+  };
+
   const a = parseArgs(argv);
   const base = asString(a.flags.base) ?? defaultBaseDir();
   const repoHint = asString(a.flags.repo);
 
   const [sub, ...rest] = a._;
+
+  if (!sub || sub === "help" || a.flags.help) {
+    usage();
+    return { code: 0 };
+  }
 
   switch (sub) {
     case "list": {
@@ -78,6 +97,7 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
       return { code: 0 };
     }
     default:
-      throw new Error("sessions: expected one of: list | show <id> | clean [--all] | delete <id>");
+      usage();
+      return { code: 2 };
   }
 };

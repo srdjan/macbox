@@ -1,5 +1,5 @@
 import { mustExist, isMacos } from "./os.ts";
-import { exec, mustExec } from "./exec.ts";
+import { exec } from "./exec.ts";
 
 export type SandboxExec = {
   readonly sandboxExecPath: string; // /usr/bin/sandbox-exec

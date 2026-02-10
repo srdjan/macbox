@@ -3,15 +3,6 @@
 import { runInteractive } from "./exec.ts";
 import type { AgentKind } from "./agent.ts";
 
-const pathExists = async (p: string): Promise<boolean> => {
-  try {
-    await Deno.stat(p);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 /** Check if the agent likely has valid credentials on the host. */
 export const hasCredentials = async (agent: AgentKind): Promise<boolean> => {
   if (agent === "claude") {

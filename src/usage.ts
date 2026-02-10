@@ -34,7 +34,7 @@ Usage:
     [--cmd <path>] [--session <latest|worktreeName|repoId/worktreeName>]
     [--allow-network|--block-network] [--allow-exec|--block-exec]
     [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>]
-    [--debug] [--trace] [--json] [--repo <path>] [--base <path>]
+    [--no-host-claude-profile] [--debug] [--trace] [--repo <path>] [--base <path>]
 
 Management commands:
   macbox sessions list [--repo <path>] [--base <path>]
@@ -62,6 +62,8 @@ Notes:
   - Agent is determined by: preset config > macbox.json defaults.agent > auto-detect.
     Configure in macbox.json: { "defaults": { "preset": "my-preset" } }
   - Bundled profiles (agent-claude, agent-codex) are auto-applied based on the resolved agent.
+  - Claude runs auto-enable host-claude by default (grants ~/.claude read/write for auth/session state).
+    Use --no-host-claude-profile to opt out.
   - Presets bundle agent, profiles, capabilities, and environment.
     Built-in preset: fullstack-typescript
     User presets: ~/.config/macbox/presets/*.json

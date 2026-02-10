@@ -1,23 +1,21 @@
 import { parseArgs } from "./mini_args.ts";
-import { detectRepo, ensureWorktree, removeWorktree } from "./git.ts";
+import { detectRepo, ensureWorktree } from "./git.ts";
 import { defaultBaseDir, worktreeDir } from "./paths.ts";
 import { ensureDir, ensureGitignoreInmacbox } from "./fs.ts";
-import { sandboxEnv } from "./env.ts";
 import { defaultAgentProfiles } from "./agent.ts";
 import type { AgentKind } from "./agent.ts";
-import { loadProfiles, parseProfileNames } from "./profiles.ts";
+import { parseProfileNames } from "./profiles.ts";
 import { expandPath, loadPreset, type LoadedPreset } from "./presets.ts";
-import { saveSession, loadSessionById } from "./sessions.ts";
+import { saveSession } from "./sessions.ts";
 import { repoIdForRoot } from "./paths.ts";
 import {
   createWorkspace,
   findWorkspaceById,
   listWorkspaces,
-  updateWorkspace,
 } from "./workspace.ts";
-import { loadMacboxConfig } from "./config.ts";
 import type { Exit } from "./main.ts";
 import { asString, boolFlag, parsePathList } from "./flags.ts";
+import { validateWorktreeName } from "./validate.ts";
 
 export const workspaceCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
   const a = parseArgs(argv);
@@ -59,8 +57,6 @@ const workspaceNew = async (
   // Resolve agent from preset (no CLI --agent flag)
   const presetAgent = presetConfig?.preset.agent;
   const agentFlag: AgentKind = presetAgent ?? "custom";
-  const agent: AgentKind | undefined = agentFlag === "custom" ? undefined : agentFlag;
-
   // Detect repo and compute repoId
   const repo = await detectRepo(repoHint);
   const repoId = await repoIdForRoot(repo.root);
@@ -72,7 +68,7 @@ const workspaceNew = async (
     ? `${presetConfig.preset.worktreePrefix}-ws`
     : "ws";
 
-  const worktreeName = asString(a.flags.worktree) ?? worktreeNameDefault;
+  const worktreeName = validateWorktreeName(asString(a.flags.worktree) ?? worktreeNameDefault);
   const wtPath = await worktreeDir(base, repo.root, worktreeName);
   const wtBranch = `macbox/${worktreeName}`;
   const actualStartPoint = presetConfig?.preset.startPoint ?? startPoint;
@@ -156,7 +152,6 @@ const workspaceList = async (
 ): Promise<Exit> => {
   const base = asString(a.flags.base) ?? defaultBaseDir();
   const showAll = boolFlag(a.flags.all, false);
-  const showArchived = boolFlag(a.flags.archived, false);
   const repoHint = asString(a.flags.repo);
 
   let repoId: string | undefined;
@@ -223,10 +218,10 @@ const workspaceOpen = async (
     return { code: 1 };
   }
 
-  // Delegate to attach by printing session info
+  // Print session info and an explicit continuation command.
   console.log(`macbox: workspace ${wsId} ready`);
   console.log(`  session: ${ws.sessionId}`);
   console.log(`  path:    ${ws.worktreePath}`);
-  console.log(`\nTo attach: macbox attach ${ws.sessionId}`);
+  console.log(`\nContinue with: macbox --session ${ws.sessionId} --prompt "continue"`);
   return { code: 0 };
 };

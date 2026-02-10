@@ -18,13 +18,25 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
     return { code: 0 };
   }
 
-  if (top.flags.help || argv.length === 0) {
+  if (argv.length === 0) {
     printMinimalHelp();
     return { code: 0 };
   }
 
   const cmd = argv[0];
   const rest = argv.slice(1);
+
+  if (cmd === "--help" || cmd === "-h" || cmd === "help") {
+    printMinimalHelp();
+    return { code: 0 };
+  }
+
+  if (top.flags.help && !cmd.startsWith("-")) {
+    // Defer help handling to subcommands (e.g., `macbox sessions --help`).
+  } else if (top.flags.help) {
+    printMinimalHelp();
+    return { code: 0 };
+  }
 
   if (cmd === "-p") {
     throw new Error("macbox: -p is not supported. Use --prompt instead.");
@@ -48,9 +60,6 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
     case "workspace":
     case "ws":
       return await workspaceCmd(rest);
-    case "help":
-      printMinimalHelp();
-      return { code: 0 };
     default:
       return await agentCmd(argv);
   }

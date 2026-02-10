@@ -1,5 +1,6 @@
 import { sha256Hex } from "./hash.ts";
 import { pathJoin } from "./os.ts";
+import { validateWorktreeName } from "./validate.ts";
 
 export type BasePaths = {
   readonly baseDir: string;
@@ -26,8 +27,9 @@ export const worktreeDir = async (
   repoRoot: string,
   worktreeName: string,
 ): Promise<string> => {
+  const safeName = validateWorktreeName(worktreeName);
   const id = await repoIdForRoot(repoRoot);
-  return pathJoin(baseDir, "worktrees", id, worktreeName);
+  return pathJoin(baseDir, "worktrees", id, safeName);
 };
 
 export const macboxDir = (worktreePath: string) => pathJoin(worktreePath, ".macbox");
@@ -45,8 +47,9 @@ export const sessionDirForRepo = async (baseDir: string, repoRoot: string) => {
   return pathJoin(baseDir, "sessions", id);
 };
 export const sessionFileFor = async (baseDir: string, repoRoot: string, worktreeName: string) => {
+  const safeName = validateWorktreeName(worktreeName);
   const dir = await sessionDirForRepo(baseDir, repoRoot);
-  return pathJoin(dir, `${worktreeName}.json`);
+  return pathJoin(dir, `${safeName}.json`);
 };
 
 // --- Config directory (user config, not state) ---

@@ -83,6 +83,9 @@ macbox --prompt "fix the build" --branch feature/login
 # Custom executable (if your agent isn't on PATH)
 macbox --prompt "fix the build" --cmd /opt/homebrew/bin/claude
 
+# Keep Claude isolated from host ~/.claude (requires ANTHROPIC_API_KEY)
+macbox --prompt "fix the build" --no-host-claude-profile
+
 # Compose additional profiles into the sandbox
 macbox --prompt "fix the build" --profile host-tools
 macbox --prompt "fix the build" --profile host-tools,host-ssh
@@ -153,7 +156,8 @@ macbox --prompt "fix the build" --allow-fs-rw=/tmp/my-scratch
 ## Profiles
 
 Some toolchains are installed in user-owned locations (e.g. `~/.local/bin`, `~/.nvm`, `~/.asdf`).
-By default, macbox **does not** grant sandbox access to your host home directory.
+By default, macbox avoids granting sandbox access to your host home directory.
+For Claude, macbox auto-enables `host-claude` unless you pass `--no-host-claude-profile`.
 
 When you *choose* to relax that, compose profile snippets via `--profile name[,name2...]`.
 
@@ -180,6 +184,7 @@ macbox ships bundled profiles that are auto-applied based on the resolved agent:
 
 - `agent-claude`: enables Mach service lookups (so Keychain/system IPC works).
 - `agent-codex`: enables Mach service lookups. `CODEX_HOME=$HOME/.codex` is set by macbox's environment setup (`env.ts`), not by the profile itself.
+- `host-claude` (auto-enabled for Claude by default): grants read/write access to `~/.claude` for Claude CLI session/auth state. Disable with `--no-host-claude-profile`.
 
 ---
 
