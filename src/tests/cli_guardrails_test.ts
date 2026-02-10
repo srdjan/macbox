@@ -147,6 +147,18 @@ Deno.test("clean --help does not execute cleanup flow", async () => {
   assert(res.code === 0, "expected success exit for help");
 });
 
+Deno.test("clean --help --json returns usage schema", async () => {
+  const out = await captureStdout(async () => {
+    const res = await cleanCmd(["--help", "--json"]);
+    assert(res.code === 0, "expected success exit for help");
+  });
+  const parsed = parseJson(out);
+  assert(
+    parsed.schema === "macbox.clean.usage.v1",
+    "expected clean usage schema",
+  );
+});
+
 Deno.test("clean requires --worktree or --all before repo detection", async () => {
   let msg = "";
   try {

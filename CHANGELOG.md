@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Machine-readable help usage schemas for management commands:
+  - `macbox.sessions.usage.v1`
+  - `macbox.profiles.usage.v1`
+  - `macbox.presets.usage.v1`
+  - `macbox.workspace.usage.v1`
+  - `macbox.clean.usage.v1`
+- Expanded CLI regression coverage for subcommand help and JSON usage output.
+- New macOS integration test that validates `--no-host-claude-profile`
+  end-to-end through saved session profiles.
+
+### Changed
+
+- Help handling now supports both `macbox <group> <subcommand> --help` and
+  `macbox <group> help <subcommand>` with targeted subcommand usage output.
+- Host profile auto-selection logic is centralized for deterministic testing and
+  consistent warning behavior.
+
+### Fixed
+
+- `--no-host-claude-profile` no longer auto-enables `host-claude` and now keeps
+  session profile composition aligned with the flag.
+- Host `~/.claude` linking behavior is now gated by active profile composition
+  instead of unconditional linking.
+
 ## [2.0.0] - 2026-01-31
 
 ### Summary

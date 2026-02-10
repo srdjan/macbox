@@ -42,20 +42,30 @@ Management commands:
   macbox sessions show <id|worktreeName|latest> [--json] [--repo <path>] [--base <path>]
   macbox sessions delete <id|worktreeName> [--json] [--repo <path>] [--base <path>]
   macbox sessions clean [--json] [--all] [--repo <path>] [--base <path>]
+  macbox sessions help [list|show|delete|clean]
 
   macbox clean [--json] [--worktree <name> | --all] [--repo <path>] [--base <path>]
 
   macbox profiles list [--json]
   macbox profiles show <name> [--json]
+  macbox profiles help [list|show]
 
   macbox presets list [--json]
   macbox presets show <name> [--json]
+  macbox presets help [list|show]
 
   macbox workspace new [--json] [--name <label>] [--preset <name>]
                        [--branch <start-point>] [--worktree <name>] [--repo <path>] [--base <path>]
   macbox workspace list [--json] [--repo <path>] [--base <path>]
   macbox workspace show <id> [--json] [--base <path>]
   macbox workspace open <id> [--json] [--base <path>]
+  macbox workspace help [new|list|show|open]
+
+  Subcommand help:
+  macbox sessions <subcommand> --help
+  macbox profiles <subcommand> --help
+  macbox presets <subcommand> --help
+  macbox workspace <subcommand> --help
 
 Notes:
   - Authentication is automatic: macbox checks for credentials on first use
@@ -71,6 +81,8 @@ Notes:
   - Uses /usr/bin/sandbox-exec to apply a Seatbelt sandbox profile.
   - --trace writes sandbox denial logs to: <worktree>/.macbox/logs/sandbox-violations.log
   - --json enables machine-readable output for management commands.
+  - Help output also supports --json with usage schemas:
+    macbox.sessions.usage.v1, macbox.profiles.usage.v1, macbox.presets.usage.v1, macbox.workspace.usage.v1
   - --profile composes additional read/write allowlists into the sandbox profile.
     Built-ins: <repo>/profiles/*.json
     User profiles: ~/.config/macbox/profiles/*.json

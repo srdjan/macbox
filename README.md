@@ -102,7 +102,24 @@ macbox --prompt "fix the build" --trace
 
 # Machine-readable management output
 macbox sessions list --json
+
+# Subcommand help (plain + JSON)
+macbox workspace new --help
+macbox sessions show --help --json
 ```
+
+Subcommand help is available in two forms:
+
+1. `macbox <group> <subcommand> --help`
+2. `macbox <group> help <subcommand>`
+
+When combined with `--json`, help output is machine-readable using these
+schemas:
+
+- `macbox.sessions.usage.v1`
+- `macbox.profiles.usage.v1`
+- `macbox.presets.usage.v1`
+- `macbox.workspace.usage.v1`
 
 ### Clean up worktrees
 
@@ -194,6 +211,7 @@ List and inspect profiles:
 macbox profiles list
 macbox profiles show host-tools
 macbox profiles show agent-claude
+macbox profiles help show
 ```
 
 > Profiles can grant _write_ access outside the worktree. macbox warns on stderr
@@ -223,6 +241,7 @@ workflow configurations.
 ```bash
 macbox presets list
 macbox presets show fullstack-typescript
+macbox presets help show
 ```
 
 ### Run with a preset
@@ -310,6 +329,7 @@ for the resolved agent. Use `--new-worktree` to force a fresh worktree.
 macbox sessions list
 macbox sessions list --repo .          # current repo only
 macbox sessions list --json            # machine-readable output
+macbox sessions help show
 ```
 
 ### Show a session
@@ -343,6 +363,9 @@ macbox workspace new --name feature-auth
 
 # With a preset
 macbox workspace new --preset fullstack-typescript --name my-feature
+
+# Subcommand help
+macbox workspace help new
 ```
 
 ### List and inspect
@@ -350,6 +373,7 @@ macbox workspace new --preset fullstack-typescript --name my-feature
 ```bash
 macbox workspace list                 # workspaces for current repo
 macbox workspace show <id>
+macbox workspace show --help --json
 ```
 
 The alias `macbox ws` is shorthand for `macbox workspace`.
@@ -358,6 +382,7 @@ The alias `macbox ws` is shorthand for `macbox workspace`.
 
 ```bash
 macbox workspace open <id>            # prints session info
+macbox workspace help open
 ```
 
 Workspaces are stored under `<base>/workspaces/<repoId>/<workspaceId>.json`.

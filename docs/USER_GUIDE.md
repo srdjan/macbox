@@ -75,6 +75,18 @@ Important options:
 
 Use `macbox --help-all` for full command help.
 
+Subcommand help:
+
+- `macbox <group> <subcommand> --help`
+- `macbox <group> help <subcommand>`
+
+With `--json`, help returns usage schemas:
+
+- `macbox.sessions.usage.v1`
+- `macbox.profiles.usage.v1`
+- `macbox.presets.usage.v1`
+- `macbox.workspace.usage.v1`
+
 If neither `--worktree` nor `--session` is provided, macbox may reuse the latest
 session worktree for the resolved agent. Use `--new-worktree` to force a fresh
 worktree.
@@ -116,6 +128,7 @@ Commands:
 ```bash
 macbox profiles list
 macbox profiles show host-tools
+macbox profiles help show
 ```
 
 Built-ins include:
@@ -144,6 +157,7 @@ Commands:
 ```bash
 macbox presets list
 macbox presets show fullstack-typescript
+macbox presets show --help --json
 ```
 
 Schema fields:
@@ -176,6 +190,7 @@ macbox sessions show <repoId/worktreeName>
 macbox sessions delete <id>
 macbox sessions clean --repo .
 macbox sessions clean --all
+macbox sessions help clean
 ```
 
 Reuse defaults:
@@ -195,6 +210,7 @@ macbox workspace new --name feature-auth
 macbox workspace list
 macbox workspace show <id>
 macbox workspace open <id>
+macbox workspace help open
 ```
 
 `workspace open` prints the session id and a ready-to-run continuation command.
