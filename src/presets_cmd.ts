@@ -2,22 +2,37 @@ import { parseArgs } from "./mini_args.ts";
 import { listAvailablePresets, loadPreset } from "./presets.ts";
 import { boolFlag, requireStringFlag } from "./flags.ts";
 
-const usage = () => {
+const usageMain = [
+  "macbox presets - list and inspect agent configuration presets",
+  "",
+  "Usage:",
+  "  macbox presets list [--json]",
+  "  macbox presets show <name> [--json]",
+  "",
+  "Notes:",
+  "  - Presets are loaded from:",
+  "      1) ~/.config/macbox/presets/<name>.json",
+  "      2) <repo>/presets/<name>.json (bundled)",
+  "  - Use --preset <name> with macbox to apply a preset",
+  "  - Edit preset files directly with your preferred editor",
+].join("\n");
+const usageList = "macbox presets list [--json]";
+const usageShow = "macbox presets show <name> [--json]";
+
+const usageFor = (sub?: string): string => {
+  switch (sub) {
+    case "list":
+      return usageList;
+    case "show":
+      return usageShow;
+    default:
+      return usageMain;
+  }
+};
+
+const usage = (sub?: string) => {
   console.log(
-    [
-      "macbox presets - list and inspect agent configuration presets",
-      "",
-      "Usage:",
-      "  macbox presets list [--json]",
-      "  macbox presets show <name> [--json]",
-      "",
-      "Notes:",
-      "  - Presets are loaded from:",
-      "      1) ~/.config/macbox/presets/<name>.json",
-      "      2) <repo>/presets/<name>.json (bundled)",
-      "  - Use --preset <name> with macbox to apply a preset",
-      "  - Edit preset files directly with your preferred editor",
-    ].join("\n"),
+    usageFor(sub),
   );
 };
 
@@ -26,8 +41,16 @@ export const presetsCmd = async (argv: ReadonlyArray<string>) => {
   const json = boolFlag(a.flags.json, false);
   const [sub, ...rest] = a._;
 
-  if (!sub || sub === "help" || a.flags.help) {
+  if (!sub) {
     usage();
+    return { code: 0 };
+  }
+  if (sub === "help") {
+    usage(rest[0]);
+    return { code: 0 };
+  }
+  if (a.flags.help) {
+    usage(sub);
     return { code: 0 };
   }
 
@@ -56,7 +79,7 @@ export const presetsCmd = async (argv: ReadonlyArray<string>) => {
     case "show": {
       const name = rest[0] ?? requireStringFlag("name", a.flags.name);
       if (!name) {
-        usage();
+        usage("show");
         return { code: 2 };
       }
       const loaded = await loadPreset(name);

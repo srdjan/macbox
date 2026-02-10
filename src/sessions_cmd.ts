@@ -11,21 +11,44 @@ import {
 } from "./sessions.ts";
 import { boolFlag, requireStringFlag } from "./flags.ts";
 
-export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
-  const usage = () => {
-    console.log(
-      [
-        "macbox sessions - inspect and manage saved session records",
-        "",
-        "Usage:",
-        "  macbox sessions list [--json] [--repo <path>] [--base <path>]",
-        "  macbox sessions show <id|worktreeName|latest> [--json] [--repo <path>] [--base <path>]",
-        "  macbox sessions delete <id|worktreeName> [--json] [--repo <path>] [--base <path>]",
-        "  macbox sessions clean [--json] [--all] [--repo <path>] [--base <path>]",
-      ].join("\n"),
-    );
-  };
+const sessionsUsageMain = [
+  "macbox sessions - inspect and manage saved session records",
+  "",
+  "Usage:",
+  "  macbox sessions list [--json] [--repo <path>] [--base <path>]",
+  "  macbox sessions show <id|worktreeName|latest> [--json] [--repo <path>] [--base <path>]",
+  "  macbox sessions delete <id|worktreeName> [--json] [--repo <path>] [--base <path>]",
+  "  macbox sessions clean [--json] [--all] [--repo <path>] [--base <path>]",
+].join("\n");
+const sessionsUsageList =
+  "macbox sessions list [--json] [--repo <path>] [--base <path>]";
+const sessionsUsageShow =
+  "macbox sessions show <id|worktreeName|latest> [--json] [--repo <path>] [--base <path>]";
+const sessionsUsageDelete =
+  "macbox sessions delete <id|worktreeName> [--json] [--repo <path>] [--base <path>]";
+const sessionsUsageClean =
+  "macbox sessions clean [--json] [--all] [--repo <path>] [--base <path>]";
 
+const sessionsUsageFor = (sub?: string): string => {
+  switch (sub) {
+    case "list":
+      return sessionsUsageList;
+    case "show":
+      return sessionsUsageShow;
+    case "delete":
+      return sessionsUsageDelete;
+    case "clean":
+      return sessionsUsageClean;
+    default:
+      return sessionsUsageMain;
+  }
+};
+
+const printSessionsUsage = (sub?: string) => {
+  console.log(sessionsUsageFor(sub));
+};
+
+export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
   const a = parseArgs(argv);
   const base = requireStringFlag("base", a.flags.base) ?? defaultBaseDir();
   const repoHint = requireStringFlag("repo", a.flags.repo);
@@ -33,8 +56,16 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
 
   const [sub, ...rest] = a._;
 
-  if (!sub || sub === "help" || a.flags.help) {
-    usage();
+  if (!sub) {
+    printSessionsUsage();
+    return { code: 0 };
+  }
+  if (sub === "help") {
+    printSessionsUsage(rest[0]);
+    return { code: 0 };
+  }
+  if (a.flags.help) {
+    printSessionsUsage(sub);
     return { code: 0 };
   }
 
@@ -196,7 +227,7 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
       return { code: 0 };
     }
     default:
-      usage();
+      printSessionsUsage();
       return { code: 2 };
   }
 };

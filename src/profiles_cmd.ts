@@ -2,30 +2,51 @@ import { parseArgs } from "./mini_args.ts";
 import { listAvailableProfiles, loadProfilesOptional } from "./profiles.ts";
 import { boolFlag, requireStringFlag } from "./flags.ts";
 
+const usageMain = [
+  "macbox profiles — manage sandbox profile snippets",
+  "",
+  "Usage:",
+  "  macbox profiles list [--json]",
+  "  macbox profiles show <name> [--json]",
+  "",
+  "Notes:",
+  "  - Profiles are loaded from:",
+  "      1) ~/.config/macbox/profiles/<name>.json",
+  "      2) <repo>/profiles/<name>.json (bundled)",
+].join("\n");
+const usageList = "macbox profiles list [--json]";
+const usageShow = "macbox profiles show <name> [--json]";
+
+const usageFor = (sub?: string): string => {
+  switch (sub) {
+    case "list":
+      return usageList;
+    case "show":
+      return usageShow;
+    default:
+      return usageMain;
+  }
+};
+
+const printUsage = (sub?: string) => {
+  console.log(usageFor(sub));
+};
+
 export const profilesCmd = async (argv: ReadonlyArray<string>) => {
   const a = parseArgs(argv);
   const json = boolFlag(a.flags.json, false);
   const [sub, ...rest] = a._;
 
-  const usage = () => {
-    console.log(
-      [
-        "macbox profiles — manage sandbox profile snippets",
-        "",
-        "Usage:",
-        "  macbox profiles list [--json]",
-        "  macbox profiles show <name> [--json]",
-        "",
-        "Notes:",
-        "  - Profiles are loaded from:",
-        "      1) ~/.config/macbox/profiles/<name>.json",
-        "      2) <repo>/profiles/<name>.json (bundled)",
-      ].join("\n"),
-    );
-  };
-
-  if (!sub || sub === "help" || a.flags.help) {
-    usage();
+  if (!sub) {
+    printUsage();
+    return { code: 0 };
+  }
+  if (sub === "help") {
+    printUsage(rest[0]);
+    return { code: 0 };
+  }
+  if (a.flags.help) {
+    printUsage(sub);
     return { code: 0 };
   }
 
@@ -49,7 +70,7 @@ export const profilesCmd = async (argv: ReadonlyArray<string>) => {
     case "show": {
       const name = rest[0] ?? requireStringFlag("name", a.flags.name);
       if (!name) {
-        usage();
+        printUsage("show");
         return { code: 2 };
       }
       // We don't need a real worktree to show; resolve relative paths against '.'
@@ -78,7 +99,7 @@ export const profilesCmd = async (argv: ReadonlyArray<string>) => {
       return { code: 0 };
     }
     default:
-      usage();
+      printUsage();
       return { code: 2 };
   }
 };

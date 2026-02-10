@@ -18,19 +18,50 @@ import { boolFlag, parsePathList, requireStringFlag } from "./flags.ts";
 import { validateWorktreeName } from "./validate.ts";
 import { resolveExecCapability, resolveNetworkCapability } from "./caps.ts";
 
-const printWorkspaceUsage = (json: boolean) => {
+const workspaceUsageMain =
+  "macbox workspace: new | list | show <id> | open <id>";
+const workspaceUsageNew =
+  "macbox workspace new [--json] [--name <label>] [--issue <number>] [--preset <name>] " +
+  "[--profile <name[,name2...]>] [--branch <start-point>] [--worktree <name>] " +
+  "[--allow-network|--block-network] [--allow-exec|--block-exec] " +
+  "[--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>] [--repo <path>] [--base <path>]";
+const workspaceUsageList =
+  "macbox workspace list [--json] [--all] [--repo <path>] [--base <path>]";
+const workspaceUsageShow =
+  "macbox workspace show <id> [--json] [--base <path>]";
+const workspaceUsageOpen =
+  "macbox workspace open <id> [--json] [--base <path>]";
+
+const workspaceUsageFor = (sub?: string): string => {
+  switch (sub) {
+    case "new":
+      return workspaceUsageNew;
+    case "list":
+      return workspaceUsageList;
+    case "show":
+      return workspaceUsageShow;
+    case "open":
+      return workspaceUsageOpen;
+    default:
+      return workspaceUsageMain;
+  }
+};
+
+const printWorkspaceUsage = (json: boolean, sub?: string) => {
+  const usage = workspaceUsageFor(sub);
   if (json) {
     console.log(JSON.stringify(
       {
         schema: "macbox.workspace.usage.v1",
-        usage: "macbox workspace: new | list | show <id> | open <id>",
+        subcommand: sub ?? null,
+        usage,
       },
       null,
       2,
     ));
     return;
   }
-  console.log("macbox workspace: new | list | show <id> | open <id>");
+  console.log(usage);
 };
 
 const mergePaths = (
@@ -53,8 +84,16 @@ export const workspaceCmd = async (
   const sub = a._[0] as string | undefined;
   const json = boolFlag(a.flags.json, false);
 
-  if (!sub || sub === "help" || a.flags.help) {
+  if (!sub) {
     printWorkspaceUsage(json);
+    return { code: 0 };
+  }
+  if (sub === "help") {
+    printWorkspaceUsage(json, a._[1] as string | undefined);
+    return { code: 0 };
+  }
+  if (a.flags.help) {
+    printWorkspaceUsage(json, sub);
     return { code: 0 };
   }
 

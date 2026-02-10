@@ -42,6 +42,10 @@ import {
   pickDefaultAgent,
   resolveAgentPath,
 } from "./agent_detect.ts";
+import {
+  decideAutoHostProfile,
+  shouldLinkHostClaude,
+} from "./host_profile_policy.ts";
 import { nextWorktreeName } from "./worktree_naming.ts";
 import { loadMacboxConfigWithWarnings } from "./config.ts";
 import { ensureAuthenticated } from "./auto_auth.ts";
@@ -194,33 +198,20 @@ export const agentCmd = async (
         `macbox: '${effectiveAgent}' not found on PATH. Install it or use --cmd /path/to/${effectiveAgent}.`,
       );
     }
-    // Auto-detect if agent binary is under HOME and add profile
+    // Resolve host profile defaults and pin to an absolute binary path.
     const home = Deno.env.get("HOME") ?? "";
-    if (home && resolved.startsWith(`${home}/`)) {
-      autoProfile = effectiveAgent === "claude" ? "host-claude" : "host-tools";
-      cmdOverride = resolved;
-      if (autoProfile === "host-claude" && disableHostClaudeProfile) {
-        autoProfile = null;
-      } else if (autoProfile === "host-claude") {
-        console.error(
-          "macbox: WARNING: auto-enabled host-claude profile (grants ~/.claude read/write). " +
-            "Use --no-host-claude-profile to disable.",
-        );
-      } else {
-        console.log(
-          `macbox: auto-enabled ${autoProfile} profile (agent under HOME)`,
-        );
-      }
-    } else if (effectiveAgent === "claude") {
-      // Always enable host-claude for Claude regardless of install location
-      // since Claude needs ~/.claude access for session management
-      if (!disableHostClaudeProfile) {
-        autoProfile = "host-claude";
-        console.error(
-          "macbox: WARNING: auto-enabled host-claude profile (grants ~/.claude read/write). " +
-            "Use --no-host-claude-profile to disable.",
-        );
-      }
+    const decision = decideAutoHostProfile({
+      effectiveAgent,
+      resolvedAgentPath: resolved,
+      homeDir: home,
+      disableHostClaudeProfile,
+    });
+    autoProfile = decision.autoProfile;
+    cmdOverride = resolved;
+    if (decision.logLevel === "warning" && decision.logMessage) {
+      console.error(decision.logMessage);
+    } else if (decision.logLevel === "info" && decision.logMessage) {
+      console.log(decision.logMessage);
     }
   }
 
@@ -331,7 +322,10 @@ export const agentCmd = async (
 
   // Link host ~/.claude only when host-claude profile is active.
   const sandboxClaudeLink = `${mp}/home/.claude`;
-  const hasHostClaudeProfile = profileNames.includes("host-claude");
+  const hasHostClaudeProfile = shouldLinkHostClaude(
+    effectiveAgent,
+    profileNames,
+  );
   if (effectiveAgent === "claude" && hasHostClaudeProfile) {
     const hostHome = Deno.env.get("HOME") ?? "";
     const hostClaudeDir = `${hostHome}/.claude`;
