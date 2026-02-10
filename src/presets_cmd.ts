@@ -30,10 +30,21 @@ const usageFor = (sub?: string): string => {
   }
 };
 
-const usage = (sub?: string) => {
-  console.log(
-    usageFor(sub),
-  );
+const usage = (json: boolean, sub?: string) => {
+  const value = usageFor(sub);
+  if (json) {
+    console.log(JSON.stringify(
+      {
+        schema: "macbox.presets.usage.v1",
+        subcommand: sub ?? null,
+        usage: value,
+      },
+      null,
+      2,
+    ));
+    return;
+  }
+  console.log(value);
 };
 
 export const presetsCmd = async (argv: ReadonlyArray<string>) => {
@@ -42,15 +53,15 @@ export const presetsCmd = async (argv: ReadonlyArray<string>) => {
   const [sub, ...rest] = a._;
 
   if (!sub) {
-    usage();
+    usage(json);
     return { code: 0 };
   }
   if (sub === "help") {
-    usage(rest[0]);
+    usage(json, rest[0]);
     return { code: 0 };
   }
   if (a.flags.help) {
-    usage(sub);
+    usage(json, sub);
     return { code: 0 };
   }
 
@@ -79,7 +90,7 @@ export const presetsCmd = async (argv: ReadonlyArray<string>) => {
     case "show": {
       const name = rest[0] ?? requireStringFlag("name", a.flags.name);
       if (!name) {
-        usage("show");
+        usage(json, "show");
         return { code: 2 };
       }
       const loaded = await loadPreset(name);
@@ -104,7 +115,7 @@ export const presetsCmd = async (argv: ReadonlyArray<string>) => {
     }
 
     default:
-      usage();
+      usage(json);
       return { code: 2 };
   }
 };

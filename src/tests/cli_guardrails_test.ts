@@ -19,6 +19,8 @@ const captureStdout = async (fn: () => Promise<unknown>): Promise<string> => {
   return lines.join("\n");
 };
 
+const parseJson = (s: string): Record<string, unknown> => JSON.parse(s);
+
 Deno.test("workspace new --help short-circuits safely", async () => {
   const out = await captureStdout(async () => {
     const res = await workspaceCmd(["new", "--help"]);
@@ -52,6 +54,22 @@ Deno.test("sessions show --help shows targeted usage", async () => {
   );
 });
 
+Deno.test("sessions show --help --json returns usage schema", async () => {
+  const out = await captureStdout(async () => {
+    const res = await sessionsCmd(["show", "--help", "--json"]);
+    assert(res.code === 0, "expected success exit for help");
+  });
+  const parsed = parseJson(out);
+  assert(
+    parsed.schema === "macbox.sessions.usage.v1",
+    "expected sessions usage schema",
+  );
+  assert(
+    parsed.subcommand === "show",
+    "expected sessions subcommand in usage output",
+  );
+});
+
 Deno.test("presets show --help shows targeted usage", async () => {
   const out = await captureStdout(async () => {
     const res = await presetsCmd(["show", "--help"]);
@@ -63,6 +81,22 @@ Deno.test("presets show --help shows targeted usage", async () => {
   );
 });
 
+Deno.test("presets show --help --json returns usage schema", async () => {
+  const out = await captureStdout(async () => {
+    const res = await presetsCmd(["show", "--help", "--json"]);
+    assert(res.code === 0, "expected success exit for help");
+  });
+  const parsed = parseJson(out);
+  assert(
+    parsed.schema === "macbox.presets.usage.v1",
+    "expected presets usage schema",
+  );
+  assert(
+    parsed.subcommand === "show",
+    "expected presets subcommand in usage output",
+  );
+});
+
 Deno.test("profiles show --help shows targeted usage", async () => {
   const out = await captureStdout(async () => {
     const res = await profilesCmd(["show", "--help"]);
@@ -71,6 +105,22 @@ Deno.test("profiles show --help shows targeted usage", async () => {
   assert(
     out.includes("macbox profiles show <name>"),
     "expected profiles show usage",
+  );
+});
+
+Deno.test("profiles show --help --json returns usage schema", async () => {
+  const out = await captureStdout(async () => {
+    const res = await profilesCmd(["show", "--help", "--json"]);
+    assert(res.code === 0, "expected success exit for help");
+  });
+  const parsed = parseJson(out);
+  assert(
+    parsed.schema === "macbox.profiles.usage.v1",
+    "expected profiles usage schema",
+  );
+  assert(
+    parsed.subcommand === "show",
+    "expected profiles subcommand in usage output",
   );
 });
 

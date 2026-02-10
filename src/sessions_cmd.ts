@@ -44,8 +44,21 @@ const sessionsUsageFor = (sub?: string): string => {
   }
 };
 
-const printSessionsUsage = (sub?: string) => {
-  console.log(sessionsUsageFor(sub));
+const printSessionsUsage = (json: boolean, sub?: string) => {
+  const usage = sessionsUsageFor(sub);
+  if (json) {
+    console.log(JSON.stringify(
+      {
+        schema: "macbox.sessions.usage.v1",
+        subcommand: sub ?? null,
+        usage,
+      },
+      null,
+      2,
+    ));
+    return;
+  }
+  console.log(usage);
 };
 
 export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
@@ -57,15 +70,15 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
   const [sub, ...rest] = a._;
 
   if (!sub) {
-    printSessionsUsage();
+    printSessionsUsage(json);
     return { code: 0 };
   }
   if (sub === "help") {
-    printSessionsUsage(rest[0]);
+    printSessionsUsage(json, rest[0]);
     return { code: 0 };
   }
   if (a.flags.help) {
-    printSessionsUsage(sub);
+    printSessionsUsage(json, sub);
     return { code: 0 };
   }
 
@@ -227,7 +240,7 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
       return { code: 0 };
     }
     default:
-      printSessionsUsage();
+      printSessionsUsage(json);
       return { code: 2 };
   }
 };

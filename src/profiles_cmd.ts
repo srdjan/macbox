@@ -28,8 +28,21 @@ const usageFor = (sub?: string): string => {
   }
 };
 
-const printUsage = (sub?: string) => {
-  console.log(usageFor(sub));
+const printUsage = (json: boolean, sub?: string) => {
+  const usage = usageFor(sub);
+  if (json) {
+    console.log(JSON.stringify(
+      {
+        schema: "macbox.profiles.usage.v1",
+        subcommand: sub ?? null,
+        usage,
+      },
+      null,
+      2,
+    ));
+    return;
+  }
+  console.log(usage);
 };
 
 export const profilesCmd = async (argv: ReadonlyArray<string>) => {
@@ -38,15 +51,15 @@ export const profilesCmd = async (argv: ReadonlyArray<string>) => {
   const [sub, ...rest] = a._;
 
   if (!sub) {
-    printUsage();
+    printUsage(json);
     return { code: 0 };
   }
   if (sub === "help") {
-    printUsage(rest[0]);
+    printUsage(json, rest[0]);
     return { code: 0 };
   }
   if (a.flags.help) {
-    printUsage(sub);
+    printUsage(json, sub);
     return { code: 0 };
   }
 
@@ -70,7 +83,7 @@ export const profilesCmd = async (argv: ReadonlyArray<string>) => {
     case "show": {
       const name = rest[0] ?? requireStringFlag("name", a.flags.name);
       if (!name) {
-        printUsage("show");
+        printUsage(json, "show");
         return { code: 2 };
       }
       // We don't need a real worktree to show; resolve relative paths against '.'
@@ -99,7 +112,7 @@ export const profilesCmd = async (argv: ReadonlyArray<string>) => {
       return { code: 0 };
     }
     default:
-      printUsage();
+      printUsage(json);
       return { code: 2 };
   }
 };
