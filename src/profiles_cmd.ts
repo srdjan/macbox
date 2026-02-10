@@ -1,9 +1,10 @@
 import { parseArgs } from "./mini_args.ts";
-import { listAvailableProfiles, loadProfiles } from "./profiles.ts";
-import { asString } from "./flags.ts";
+import { listAvailableProfiles, loadProfilesOptional } from "./profiles.ts";
+import { asString, boolFlag } from "./flags.ts";
 
 export const profilesCmd = async (argv: ReadonlyArray<string>) => {
   const a = parseArgs(argv);
+  const json = boolFlag(a.flags.json, false);
   const [sub, ...rest] = a._;
 
   const usage = () => {
@@ -12,8 +13,8 @@ export const profilesCmd = async (argv: ReadonlyArray<string>) => {
         "macbox profiles — manage sandbox profile snippets",
         "",
         "Usage:",
-        "  macbox profiles list",
-        "  macbox profiles show <name>",
+        "  macbox profiles list [--json]",
+        "  macbox profiles show <name> [--json]",
         "",
         "Notes:",
         "  - Profiles are loaded from:",
@@ -31,6 +32,17 @@ export const profilesCmd = async (argv: ReadonlyArray<string>) => {
   switch (sub) {
     case "list": {
       const names = await listAvailableProfiles();
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            schema: "macbox.profiles.list.v1",
+            profiles: names,
+          },
+          null,
+          2,
+        ));
+        return { code: 0 };
+      }
       for (const n of names) console.log(n);
       return { code: 0 };
     }
@@ -41,8 +53,27 @@ export const profilesCmd = async (argv: ReadonlyArray<string>) => {
         return { code: 2 };
       }
       // We don't need a real worktree to show; resolve relative paths against '.'
-      const loaded = await loadProfiles(Deno.cwd(), [name]);
+      const loaded = await loadProfilesOptional(
+        Deno.cwd(),
+        [name],
+        new Set<string>(),
+      );
+      for (const w of loaded.warnings) {
+        console.error(`macbox: WARNING: ${w}`);
+      }
       const p = loaded.profiles[0];
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            schema: "macbox.profiles.show.v1",
+            profile: p,
+            warnings: loaded.warnings,
+          },
+          null,
+          2,
+        ));
+        return { code: 0 };
+      }
       console.log(JSON.stringify(p, null, 2));
       return { code: 0 };
     }

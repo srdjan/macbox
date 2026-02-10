@@ -1,6 +1,7 @@
 # macbox user guide
 
-macbox runs AI coding agents in a native macOS Seatbelt sandbox using git worktrees.
+macbox runs AI coding agents in a native macOS Seatbelt sandbox using git
+worktrees.
 
 Core concepts:
 
@@ -60,6 +61,7 @@ Important options:
 - `--branch <ref>`
 - `--cmd <path>`
 - `--session <latest|worktreeName|repoId/worktreeName>`
+- `--new-worktree`
 - `--allow-network` / `--block-network` / `--no-network`
 - `--allow-exec` / `--block-exec`
 - `--allow-fs-read <p1[,p2...]>`
@@ -67,15 +69,20 @@ Important options:
 - `--no-host-claude-profile`
 - `--debug`
 - `--trace`
+- `--json` (management commands)
 - `--repo <path>`
 - `--base <path>`
 
 Use `macbox --help-all` for full command help.
 
+If neither `--worktree` nor `--session` is provided, macbox may reuse the latest
+session worktree for the resolved agent. Use `--new-worktree` to force a fresh
+worktree.
+
 ## Worktree naming safety
 
-`--worktree` names may only include letters, numbers, `.`, `_`, and `-`.
-Path separators are intentionally rejected.
+`--worktree` names may only include letters, numbers, `.`, `_`, and `-`. Path
+separators are intentionally rejected.
 
 ## What is sandboxed
 
@@ -163,6 +170,7 @@ Commands:
 
 ```bash
 macbox sessions list
+macbox sessions list --json
 macbox sessions show latest
 macbox sessions show <repoId/worktreeName>
 macbox sessions delete <id>
@@ -221,9 +229,9 @@ Create at repo root:
 
 ## v2 Simplification note
 
-Since v2.0.0, macbox focuses on sandboxed agent execution only.
-Ralph, Flows, Skills, Context Packs, and Projects registry were removed.
-For autonomous loops, use `ralph-cli` separately.
+Since v2.0.0, macbox focuses on sandboxed agent execution only. Ralph, Flows,
+Skills, Context Packs, and Projects registry were removed. For autonomous loops,
+use `ralph-cli` separately.
 
 ## Development
 

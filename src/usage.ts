@@ -32,29 +32,30 @@ Usage:
   Advanced flags (not shown in basic help):
     [--preset <name>] [--profile <name[,name2...]>] [--worktree <name>] [--branch <branch>]
     [--cmd <path>] [--session <latest|worktreeName|repoId/worktreeName>]
+    [--new-worktree]
     [--allow-network|--block-network] [--allow-exec|--block-exec]
     [--allow-fs-read <p1[,p2...]>] [--allow-fs-rw <p1[,p2...]>]
-    [--no-host-claude-profile] [--debug] [--trace] [--repo <path>] [--base <path>]
+    [--no-host-claude-profile] [--debug] [--trace] [--json] [--repo <path>] [--base <path>]
 
 Management commands:
-  macbox sessions list [--repo <path>] [--base <path>]
-  macbox sessions show <id|worktreeName|latest> [--repo <path>] [--base <path>]
-  macbox sessions delete <id|worktreeName> [--repo <path>] [--base <path>]
-  macbox sessions clean [--all] [--repo <path>] [--base <path>]
+  macbox sessions list [--json] [--repo <path>] [--base <path>]
+  macbox sessions show <id|worktreeName|latest> [--json] [--repo <path>] [--base <path>]
+  macbox sessions delete <id|worktreeName> [--json] [--repo <path>] [--base <path>]
+  macbox sessions clean [--json] [--all] [--repo <path>] [--base <path>]
 
-  macbox clean [--worktree <name> | --all] [--repo <path>] [--base <path>]
+  macbox clean [--json] [--worktree <name> | --all] [--repo <path>] [--base <path>]
 
-  macbox profiles list
-  macbox profiles show <name>
+  macbox profiles list [--json]
+  macbox profiles show <name> [--json]
 
-  macbox presets list
-  macbox presets show <name>
+  macbox presets list [--json]
+  macbox presets show <name> [--json]
 
-  macbox workspace new [--name <label>] [--preset <name>]
+  macbox workspace new [--json] [--name <label>] [--preset <name>]
                        [--branch <start-point>] [--worktree <name>] [--repo <path>] [--base <path>]
-  macbox workspace list [--repo <path>] [--base <path>]
-  macbox workspace show <id> [--base <path>]
-  macbox workspace open <id> [--base <path>]
+  macbox workspace list [--json] [--repo <path>] [--base <path>]
+  macbox workspace show <id> [--json] [--base <path>]
+  macbox workspace open <id> [--json] [--base <path>]
 
 Notes:
   - Authentication is automatic: macbox checks for credentials on first use
@@ -69,9 +70,12 @@ Notes:
     User presets: ~/.config/macbox/presets/*.json
   - Uses /usr/bin/sandbox-exec to apply a Seatbelt sandbox profile.
   - --trace writes sandbox denial logs to: <worktree>/.macbox/logs/sandbox-violations.log
+  - --json enables machine-readable output for management commands.
   - --profile composes additional read/write allowlists into the sandbox profile.
     Built-ins: <repo>/profiles/*.json
     User profiles: ~/.config/macbox/profiles/*.json
+  - If no --worktree/--session is passed, macbox may reuse the latest session worktree.
+    Use --new-worktree to force creating a fresh worktree.
   - Creates worktrees under: <base>/worktrees/<repoId>/<worktree>
   - Agent HOME/caches/tmp live under: <worktree>/.macbox/
   - Workspaces provide named worktrees with associated session metadata.

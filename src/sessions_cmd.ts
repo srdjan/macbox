@@ -1,8 +1,15 @@
 import { parseArgs } from "./mini_args.ts";
 import { detectRepo } from "./git.ts";
 import { defaultBaseDir } from "./paths.ts";
-import { findLatestSession, listSessions, loadSessionById, resolveSessionIdForRepo, deleteAllSessions, deleteSession } from "./sessions.ts";
-import { asString } from "./flags.ts";
+import {
+  deleteAllSessions,
+  deleteSession,
+  findLatestSession,
+  listSessions,
+  loadSessionById,
+  resolveSessionIdForRepo,
+} from "./sessions.ts";
+import { asString, boolFlag } from "./flags.ts";
 
 export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
   const usage = () => {
@@ -11,10 +18,10 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
         "macbox sessions - inspect and manage saved session records",
         "",
         "Usage:",
-        "  macbox sessions list [--repo <path>] [--base <path>]",
-        "  macbox sessions show <id|worktreeName|latest> [--repo <path>] [--base <path>]",
-        "  macbox sessions delete <id|worktreeName> [--repo <path>] [--base <path>]",
-        "  macbox sessions clean [--all] [--repo <path>] [--base <path>]",
+        "  macbox sessions list [--json] [--repo <path>] [--base <path>]",
+        "  macbox sessions show <id|worktreeName|latest> [--json] [--repo <path>] [--base <path>]",
+        "  macbox sessions delete <id|worktreeName> [--json] [--repo <path>] [--base <path>]",
+        "  macbox sessions clean [--json] [--all] [--repo <path>] [--base <path>]",
       ].join("\n"),
     );
   };
@@ -22,6 +29,7 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
   const a = parseArgs(argv);
   const base = asString(a.flags.base) ?? defaultBaseDir();
   const repoHint = asString(a.flags.repo);
+  const json = boolFlag(a.flags.json, false);
 
   const [sub, ...rest] = a._;
 
@@ -34,6 +42,17 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
     case "list": {
       const repo = repoHint ? await detectRepo(repoHint) : null;
       const xs = await listSessions({ baseDir: base, repoRoot: repo?.root });
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            schema: "macbox.sessions.list.v1",
+            sessions: xs,
+          },
+          null,
+          2,
+        ));
+        return { code: 0 };
+      }
       if (xs.length === 0) {
         console.log("No sessions.");
         return { code: 0 };
@@ -41,18 +60,38 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
       // plain columns
       console.log(["ID", "AGENT", "WORKTREE", "UPDATED"].join("\t"));
       for (const s of xs) {
-        console.log([s.id, s.agent ?? "-", s.worktreeName, s.updatedAt].join("\t"));
+        console.log(
+          [s.id, s.agent ?? "-", s.worktreeName, s.updatedAt].join("\t"),
+        );
       }
       return { code: 0 };
     }
     case "show": {
       const idArg = rest[0];
-      if (!idArg) throw new Error("sessions show: missing <id>. Use: macbox sessions list");
+      if (!idArg) {
+        throw new Error(
+          "sessions show: missing <id>. Use: macbox sessions list",
+        );
+      }
       // If id is "latest" and repo is provided, resolve within repo; otherwise global latest.
       if (idArg === "latest") {
         const repo = repoHint ? await detectRepo(repoHint) : null;
-        const s = await findLatestSession({ baseDir: base, repoRoot: repo?.root });
+        const s = await findLatestSession({
+          baseDir: base,
+          repoRoot: repo?.root,
+        });
         if (!s) throw new Error("macbox: no sessions found (latest)");
+        if (json) {
+          console.log(JSON.stringify(
+            {
+              schema: "macbox.sessions.show.v1",
+              session: s,
+            },
+            null,
+            2,
+          ));
+          return { code: 0 };
+        }
         console.log(JSON.stringify(s, null, 2));
         return { code: 0 };
       }
@@ -64,10 +103,32 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
           ref: idArg,
         });
         const s = await loadSessionById({ baseDir: base, id: resolved });
+        if (json) {
+          console.log(JSON.stringify(
+            {
+              schema: "macbox.sessions.show.v1",
+              session: s,
+            },
+            null,
+            2,
+          ));
+          return { code: 0 };
+        }
         console.log(JSON.stringify(s, null, 2));
         return { code: 0 };
       }
       const s = await loadSessionById({ baseDir: base, id: idArg });
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            schema: "macbox.sessions.show.v1",
+            session: s,
+          },
+          null,
+          2,
+        ));
+        return { code: 0 };
+      }
       console.log(JSON.stringify(s, null, 2));
       return { code: 0 };
     }
@@ -75,12 +136,35 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
       const all = !!a.flags.all;
       if (all) {
         await deleteAllSessions({ baseDir: base });
+        if (json) {
+          console.log(JSON.stringify(
+            {
+              schema: "macbox.sessions.clean.v1",
+              mode: "all",
+            },
+            null,
+            2,
+          ));
+          return { code: 0 };
+        }
         console.log("Deleted all sessions.");
         return { code: 0 };
       }
       // default: delete sessions for current repo
       const repo = await detectRepo(repoHint);
       await deleteAllSessions({ baseDir: base, repoRoot: repo.root });
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            schema: "macbox.sessions.clean.v1",
+            mode: "repo",
+            repoRoot: repo.root,
+          },
+          null,
+          2,
+        ));
+        return { code: 0 };
+      }
       console.log("Deleted sessions for this repo.");
       return { code: 0 };
     }
@@ -90,9 +174,24 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
       let id = idArg;
       if (!idArg.includes("/")) {
         const repo = await detectRepo(repoHint);
-        id = await resolveSessionIdForRepo({ baseDir: base, repoRoot: repo.root, ref: idArg });
+        id = await resolveSessionIdForRepo({
+          baseDir: base,
+          repoRoot: repo.root,
+          ref: idArg,
+        });
       }
       await deleteSession({ baseDir: base, id });
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            schema: "macbox.sessions.delete.v1",
+            id,
+          },
+          null,
+          2,
+        ));
+        return { code: 0 };
+      }
       console.log(`Deleted session: ${id}`);
       return { code: 0 };
     }

@@ -22,6 +22,7 @@ export type Preset = {
 export type LoadedPreset = {
   readonly preset: Preset;
   readonly source: string;
+  readonly warnings: ReadonlyArray<string>;
 };
 
 const normalizePath = (p: string): string => {
@@ -113,17 +114,72 @@ const isPathLike = (name: string) =>
 const isValidAgent = (v: unknown): v is AgentKind =>
   v === "claude" || v === "codex" || v === "custom";
 
-const validatePreset = (raw: unknown, nameHint: string): Preset => {
+const allowedPresetKeys = new Set([
+  "name",
+  "description",
+  "agent",
+  "profiles",
+  "capabilities",
+  "env",
+  "worktreePrefix",
+  "startPoint",
+]);
+const legacyPresetKeys = new Set([
+  "model",
+  "apiKeyEnv",
+  "cmd",
+  "skills",
+  "ralph",
+]);
+const allowedCapabilitiesKeys = new Set([
+  "network",
+  "exec",
+  "extraReadPaths",
+  "extraWritePaths",
+]);
+
+type ValidatedPreset = {
+  readonly preset: Preset;
+  readonly warnings: ReadonlyArray<string>;
+};
+
+const validatePreset = (raw: unknown, nameHint: string): ValidatedPreset => {
   if (raw === null || typeof raw !== "object") {
     throw new Error(`Preset '${nameHint}': expected JSON object`);
   }
   const o = raw as Record<string, unknown>;
+  const warnings: string[] = [];
 
-  const name =
-    typeof o.name === "string" && o.name.trim() ? o.name.trim() : nameHint;
-  const description =
-    typeof o.description === "string" ? o.description : undefined;
-  const agent = isValidAgent(o.agent) ? o.agent : undefined;
+  for (const k of Object.keys(o)) {
+    if (legacyPresetKeys.has(k)) {
+      warnings.push(
+        `Preset '${nameHint}': legacy field '${k}' is ignored in v2`,
+      );
+      continue;
+    }
+    if (!allowedPresetKeys.has(k)) {
+      warnings.push(`Preset '${nameHint}': unknown field '${k}' is ignored`);
+    }
+  }
+
+  const name = typeof o.name === "string" && o.name.trim()
+    ? o.name.trim()
+    : nameHint;
+  const description = typeof o.description === "string"
+    ? o.description
+    : undefined;
+  const agent = (() => {
+    if (o.agent === undefined) return undefined;
+    if (!isValidAgent(o.agent)) {
+      warnings.push(
+        `Preset '${nameHint}': invalid agent '${
+          String(o.agent)
+        }' (expected claude|codex|custom)`,
+      );
+      return undefined;
+    }
+    return o.agent;
+  })();
 
   const profiles = Array.isArray(o.profiles)
     ? (o.profiles.filter((x) => typeof x === "string") as string[])
@@ -131,49 +187,113 @@ const validatePreset = (raw: unknown, nameHint: string): Preset => {
 
   const capabilities = (() => {
     if (o.capabilities === null || typeof o.capabilities !== "object") {
+      if (o.capabilities !== undefined) {
+        warnings.push(`Preset '${nameHint}': capabilities must be an object`);
+      }
       return undefined;
     }
     const c = o.capabilities as Record<string, unknown>;
+    for (const k of Object.keys(c)) {
+      if (!allowedCapabilitiesKeys.has(k)) {
+        warnings.push(
+          `Preset '${nameHint}': capabilities.${k} is not supported and will be ignored`,
+        );
+      }
+    }
     return {
-      network: typeof c.network === "boolean" ? c.network : undefined,
-      exec: typeof c.exec === "boolean" ? c.exec : undefined,
+      network: typeof c.network === "boolean"
+        ? c.network
+        : c.network === undefined
+        ? undefined
+        : (warnings.push(
+          `Preset '${nameHint}': capabilities.network must be boolean`,
+        ),
+          undefined),
+      exec: typeof c.exec === "boolean"
+        ? c.exec
+        : c.exec === undefined
+        ? undefined
+        : (warnings.push(
+          `Preset '${nameHint}': capabilities.exec must be boolean`,
+        ),
+          undefined),
       extraReadPaths: Array.isArray(c.extraReadPaths)
         ? (c.extraReadPaths.filter((x) => typeof x === "string") as string[])
-        : undefined,
+        : c.extraReadPaths === undefined
+        ? undefined
+        : (warnings.push(
+          `Preset '${nameHint}': capabilities.extraReadPaths must be string[]`,
+        ),
+          undefined),
       extraWritePaths: Array.isArray(c.extraWritePaths)
         ? (c.extraWritePaths.filter((x) => typeof x === "string") as string[])
-        : undefined,
+        : c.extraWritePaths === undefined
+        ? undefined
+        : (warnings.push(
+          `Preset '${nameHint}': capabilities.extraWritePaths must be string[]`,
+        ),
+          undefined),
     } as PresetCapabilities;
   })();
 
   const env = (() => {
-    if (o.env === null || typeof o.env !== "object") return undefined;
+    if (o.env === null || typeof o.env !== "object") {
+      if (o.env !== undefined) {
+        warnings.push(`Preset '${nameHint}': env must be an object`);
+      }
+      return undefined;
+    }
     const e = o.env as Record<string, unknown>;
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(e)) {
-      if (typeof v === "string") out[k] = v;
+      if (typeof v === "string") {
+        out[k] = v;
+      } else {
+        warnings.push(`Preset '${nameHint}': env.${k} must be a string`);
+      }
     }
     return Object.keys(out).length > 0 ? out : undefined;
   })();
 
-  const worktreePrefix =
-    typeof o.worktreePrefix === "string" ? o.worktreePrefix : undefined;
-  const startPoint =
-    typeof o.startPoint === "string" ? o.startPoint : undefined;
+  const worktreePrefix = typeof o.worktreePrefix === "string"
+    ? o.worktreePrefix
+    : o.worktreePrefix === undefined
+    ? undefined
+    : (warnings.push(`Preset '${nameHint}': worktreePrefix must be a string`),
+      undefined);
+  const startPoint = typeof o.startPoint === "string"
+    ? o.startPoint
+    : o.startPoint === undefined
+    ? undefined
+    : (warnings.push(`Preset '${nameHint}': startPoint must be a string`),
+      undefined);
 
   return {
-    name,
-    description,
-    agent,
-    profiles,
-    capabilities,
-    env,
-    worktreePrefix,
-    startPoint,
+    preset: {
+      name,
+      description,
+      agent,
+      profiles,
+      capabilities,
+      env,
+      worktreePrefix,
+      startPoint,
+    },
+    warnings,
   };
 };
 
-export const resolvePresetFile = (nameOrPath: string): ReadonlyArray<string> => {
+export const validatePresetWithWarnings = (
+  raw: unknown,
+  nameHint: string,
+): ValidatedPreset => validatePreset(raw, nameHint);
+
+export const validatePresetOnly = (raw: unknown, nameHint: string): Preset =>
+  validatePreset(raw, nameHint).preset;
+
+export const resolvePresetFile = (
+  nameOrPath: string,
+): ReadonlyArray<string> => {
   if (isPathLike(nameOrPath)) {
     const p = nameOrPath.startsWith("/")
       ? nameOrPath
@@ -194,12 +314,16 @@ export const loadPreset = async (nameOrPath: string): Promise<LoadedPreset> => {
   for (const p of candidates) {
     const raw = await tryReadJsonFile(p);
     if (raw !== null) {
-      const preset = validatePreset(raw, nameOrPath);
-      return { preset, source: p };
+      const validated = validatePreset(raw, nameOrPath);
+      return {
+        preset: validated.preset,
+        source: p,
+        warnings: validated.warnings,
+      };
     }
   }
   throw new Error(
-    `Preset not found: ${nameOrPath} (searched: ${candidates.join(", ")})`
+    `Preset not found: ${nameOrPath} (searched: ${candidates.join(", ")})`,
   );
 };
 
@@ -217,7 +341,9 @@ const listJsonNames = async (dir: string): Promise<string[]> => {
   return out;
 };
 
-export const listAvailablePresets = async (): Promise<ReadonlyArray<string>> => {
+export const listAvailablePresets = async (): Promise<
+  ReadonlyArray<string>
+> => {
   const names = new Set<string>();
   const envDir = envPresetsDir();
   if (envDir) {
@@ -238,7 +364,7 @@ const pathExists = async (p: string): Promise<boolean> => {
 };
 
 export const validatePresetPaths = async (
-  preset: Preset
+  preset: Preset,
 ): Promise<ReadonlyArray<string>> => {
   const warnings: string[] = [];
 

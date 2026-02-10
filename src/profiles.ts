@@ -15,7 +15,9 @@ export type LoadedProfiles = {
   readonly extraWritePaths: ReadonlyArray<string>;
   readonly allowMachLookupAll: boolean;
   readonly machServices: ReadonlyArray<string>;
-  readonly sources: ReadonlyArray<{ readonly name: string; readonly path: string }>;
+  readonly sources: ReadonlyArray<
+    { readonly name: string; readonly path: string }
+  >;
 };
 
 export type LoadedProfilesWithWarnings = LoadedProfiles & {
@@ -24,7 +26,9 @@ export type LoadedProfilesWithWarnings = LoadedProfiles & {
 
 const trim = (s: string) => s.trim();
 
-export const parseProfileNames = (v: string | undefined): ReadonlyArray<string> => {
+export const parseProfileNames = (
+  v: string | undefined,
+): ReadonlyArray<string> => {
   if (!v) return [];
   // Support: --profile a,b,c
   return v.split(",").map(trim).filter(Boolean);
@@ -61,21 +65,65 @@ const toAbsPath = (worktree: string, p: string): string => {
   return normalizePath(pathJoin(worktree, t));
 };
 
-const validateProfile = (raw: unknown, nameHint: string): Profile => {
+const allowedProfileKeys = new Set([
+  "name",
+  "description",
+  "read_paths",
+  "write_paths",
+  "mach_lookup",
+]);
+
+type ValidatedProfile = {
+  readonly profile: Profile;
+  readonly warnings: ReadonlyArray<string>;
+};
+
+const validateProfile = (raw: unknown, nameHint: string): ValidatedProfile => {
   if (raw === null || typeof raw !== "object") {
     throw new Error(`Profile '${nameHint}': expected JSON object`);
   }
   const o = raw as Record<string, unknown>;
-  const name = typeof o.name === "string" && o.name.trim() ? o.name.trim() : nameHint;
-  const description = typeof o.description === "string" ? o.description : undefined;
-  const read_paths = Array.isArray(o.read_paths) ? o.read_paths.filter((x) => typeof x === "string") as string[] : undefined;
-  const write_paths = Array.isArray(o.write_paths) ? o.write_paths.filter((x) => typeof x === "string") as string[] : undefined;
+  const warnings: string[] = [];
+  for (const k of Object.keys(o)) {
+    if (!allowedProfileKeys.has(k)) {
+      warnings.push(`Profile '${nameHint}': unknown field '${k}' is ignored`);
+    }
+  }
+
+  const name = typeof o.name === "string" && o.name.trim()
+    ? o.name.trim()
+    : nameHint;
+  const description = typeof o.description === "string"
+    ? o.description
+    : undefined;
+  const read_paths = Array.isArray(o.read_paths)
+    ? o.read_paths.filter((x) => typeof x === "string") as string[]
+    : o.read_paths === undefined
+    ? undefined
+    : (warnings.push(`Profile '${nameHint}': read_paths must be string[]`),
+      undefined);
+  const write_paths = Array.isArray(o.write_paths)
+    ? o.write_paths.filter((x) => typeof x === "string") as string[]
+    : o.write_paths === undefined
+    ? undefined
+    : (warnings.push(`Profile '${nameHint}': write_paths must be string[]`),
+      undefined);
   const mach_lookup = (() => {
     if (typeof o.mach_lookup === "boolean") return o.mach_lookup;
-    if (Array.isArray(o.mach_lookup)) return o.mach_lookup.filter((x) => typeof x === "string") as string[];
+    if (Array.isArray(o.mach_lookup)) {
+      return o.mach_lookup.filter((x) => typeof x === "string") as string[];
+    }
+    if (o.mach_lookup !== undefined) {
+      warnings.push(
+        `Profile '${nameHint}': mach_lookup must be boolean or string[]`,
+      );
+    }
     return undefined;
   })();
-  return { name, description, read_paths, write_paths, mach_lookup };
+  return {
+    profile: { name, description, read_paths, write_paths, mach_lookup },
+    warnings,
+  };
 };
 
 export const userProfilesDir = (): string => {
@@ -138,11 +186,16 @@ const tryReadJsonFile = async (path: string): Promise<unknown | null> => {
   }
 };
 
-const isPathLike = (name: string) => name.includes("/") || name.endsWith(".json") || name.startsWith(".");
+const isPathLike = (name: string) =>
+  name.includes("/") || name.endsWith(".json") || name.startsWith(".");
 
-export const resolveProfileFile = (nameOrPath: string): ReadonlyArray<string> => {
+export const resolveProfileFile = (
+  nameOrPath: string,
+): ReadonlyArray<string> => {
   if (isPathLike(nameOrPath)) {
-    const p = nameOrPath.startsWith("/") ? nameOrPath : pathJoin(Deno.cwd(), nameOrPath);
+    const p = nameOrPath.startsWith("/")
+      ? nameOrPath
+      : pathJoin(Deno.cwd(), nameOrPath);
     return [normalizePath(p)];
   }
   const name = nameOrPath;
@@ -177,9 +230,12 @@ export const loadProfiles = async (
       }
     }
     if (!loaded) {
-      throw new Error(`Profile not found: ${n} (searched: ${candidates.join(", ")})`);
+      throw new Error(
+        `Profile not found: ${n} (searched: ${candidates.join(", ")})`,
+      );
     }
-    const prof = validateProfile(loaded.raw, n);
+    const validated = validateProfile(loaded.raw, n);
+    const prof = validated.profile;
     profiles.push(prof);
     sources.push({ name: prof.name, path: loaded.path });
 
@@ -235,12 +291,20 @@ export const loadProfilesOptional = async (
     }
     if (!loaded) {
       if (optionalNames.has(n)) {
-        warnings.push(`optional profile not found: ${n} (searched: ${candidates.join(", ")})`);
+        warnings.push(
+          `optional profile not found: ${n} (searched: ${
+            candidates.join(", ")
+          })`,
+        );
         continue;
       }
-      throw new Error(`Profile not found: ${n} (searched: ${candidates.join(", ")})`);
+      throw new Error(
+        `Profile not found: ${n} (searched: ${candidates.join(", ")})`,
+      );
     }
-    const prof = validateProfile(loaded.raw, n);
+    const validated = validateProfile(loaded.raw, n);
+    const prof = validated.profile;
+    for (const w of validated.warnings) warnings.push(w);
     profiles.push(prof);
     sources.push({ name: prof.name, path: loaded.path });
 
@@ -285,7 +349,9 @@ const listJsonNames = async (dir: string): Promise<string[]> => {
   return out;
 };
 
-export const listAvailableProfiles = async (): Promise<ReadonlyArray<string>> => {
+export const listAvailableProfiles = async (): Promise<
+  ReadonlyArray<string>
+> => {
   const names = new Set<string>();
   const envDir = envProfilesDir();
   if (envDir) {

@@ -26,14 +26,18 @@ import {
 } from "./sessions.ts";
 import {
   expandPath,
-  loadPreset,
   type LoadedPreset,
+  loadPreset,
   validatePresetPaths,
 } from "./presets.ts";
 import { asString, boolFlag, parseEnvPairs, parsePathList } from "./flags.ts";
-import { detectAgents, pickDefaultAgent, resolveAgentPath } from "./agent_detect.ts";
+import {
+  detectAgents,
+  pickDefaultAgent,
+  resolveAgentPath,
+} from "./agent_detect.ts";
 import { nextWorktreeName } from "./worktree_naming.ts";
-import { loadMacboxConfig } from "./config.ts";
+import { loadMacboxConfigWithWarnings } from "./config.ts";
 import { ensureAuthenticated } from "./auto_auth.ts";
 import { validateWorktreeName, validateWorktreePrefix } from "./validate.ts";
 import type { Exit } from "./main.ts";
@@ -71,7 +75,7 @@ export const agentCmd = async (
   if (!prompt) {
     throw new Error(
       "macbox: --prompt is required.\n" +
-      '  macbox --prompt "fix the build"',
+        '  macbox --prompt "fix the build"',
     );
   }
 
@@ -80,16 +84,28 @@ export const agentCmd = async (
   const repoHint = asString(a.flags.repo);
   const cmdFlagRaw = a.flags.cmd;
   if (cmdFlagRaw === true) {
-    throw new Error("macbox: --cmd requires a value (e.g., --cmd /path/to/agent)");
+    throw new Error(
+      "macbox: --cmd requires a value (e.g., --cmd /path/to/agent)",
+    );
   }
   let cmdOverride = asString(cmdFlagRaw);
   const trace = boolFlag(a.flags.trace, false);
   const debug = boolFlag(a.flags.debug, false) || trace;
-  const disableHostClaudeProfile = boolFlag(a.flags["no-host-claude-profile"], false);
+  const disableHostClaudeProfile = boolFlag(
+    a.flags["no-host-claude-profile"],
+    false,
+  );
+  const forceNewWorktree = boolFlag(a.flags["new-worktree"], false);
 
   // --- Resolve preset (CLI > macbox.json) ---
   const repo = await detectRepo(repoHint);
-  const config = await loadMacboxConfig(repo.root, repo.root);
+  const loadedConfig = await loadMacboxConfigWithWarnings(repo.root, repo.root);
+  const config = loadedConfig?.config ?? null;
+  if (loadedConfig?.warnings?.length) {
+    for (const w of loadedConfig.warnings) {
+      console.error(`macbox: WARNING: ${w}`);
+    }
+  }
 
   const presetName = asString(a.flags.preset) ??
     config?.defaults?.preset;
@@ -97,11 +113,15 @@ export const agentCmd = async (
   let presetConfig: LoadedPreset | null = null;
   if (presetName) {
     presetConfig = await loadPreset(presetName);
+    for (const w of presetConfig.warnings) {
+      console.error(`macbox: WARNING: ${w}`);
+    }
   }
 
   // --- Resolve command override (CLI) ---
   if (cmdOverride) {
-    const looksLikePath = cmdOverride.includes("/") || cmdOverride.startsWith(".");
+    const looksLikePath = cmdOverride.includes("/") ||
+      cmdOverride.startsWith(".");
     if (looksLikePath) {
       try {
         await Deno.stat(cmdOverride);
@@ -114,12 +134,20 @@ export const agentCmd = async (
   // --- Resolve agent: preset > macbox.json defaults > auto-detect ---
   const agentRaw = presetConfig?.preset.agent ??
     config?.defaults?.agent;
-  let agent: AgentKind | undefined = agentRaw && isAgent(agentRaw) ? agentRaw : undefined;
+  let agent: AgentKind | undefined = agentRaw && isAgent(agentRaw)
+    ? agentRaw
+    : undefined;
 
   if (!agent && !cmdOverride) {
     const detected = await detectAgents();
     const picked = pickDefaultAgent(detected);
     agent = picked.agent;
+    if (picked.ambiguous) {
+      console.error(
+        "macbox: both 'claude' and 'codex' were detected; defaulting to 'claude'. " +
+          "Set defaults.agent in macbox.json or use --preset to choose explicitly.",
+      );
+    }
   }
 
   if (!agent && !cmdOverride) {
@@ -152,7 +180,9 @@ export const agentCmd = async (
             "Use --no-host-claude-profile to disable.",
         );
       } else {
-        console.log(`macbox: auto-enabled ${autoProfile} profile (agent under HOME)`);
+        console.log(
+          `macbox: auto-enabled ${autoProfile} profile (agent under HOME)`,
+        );
       }
     } else if (effectiveAgent === "claude") {
       // Always enable host-claude for Claude regardless of install location
@@ -192,13 +222,27 @@ export const agentCmd = async (
 
   // --- Worktree naming (from start.ts: auto-increment) ---
   const worktreeFlag = asString(a.flags.worktree);
-  const safeWorktreeFlag = worktreeFlag ? validateWorktreeName(worktreeFlag) : undefined;
-  const prefix = validateWorktreePrefix(presetConfig?.preset.worktreePrefix ??
-    `ai-${effectiveAgent}`);
+  const safeWorktreeFlag = worktreeFlag
+    ? validateWorktreeName(worktreeFlag)
+    : undefined;
+  const prefix = validateWorktreePrefix(
+    presetConfig?.preset.worktreePrefix ??
+      `ai-${effectiveAgent}`,
+  );
 
-  const inferredLatest = !worktreeFlag
-    ? await findLatestSession({ baseDir: base, repoRoot: repo.root, agent: effectiveAgent })
+  const inferredLatest = !safeWorktreeFlag && !sessionRef && !forceNewWorktree
+    ? await findLatestSession({
+      baseDir: base,
+      repoRoot: repo.root,
+      agent: effectiveAgent,
+    })
     : null;
+
+  if (inferredLatest) {
+    console.log(
+      `macbox: reusing latest worktree '${inferredLatest.worktreeName}' (pass --new-worktree to create a fresh one)`,
+    );
+  }
 
   const worktreeName = safeWorktreeFlag ?? sessionRec?.worktreeName ??
     inferredLatest?.worktreeName ??
@@ -207,17 +251,19 @@ export const agentCmd = async (
   const wtPath = await worktreeDir(base, repo.root, worktreeName);
 
   // --- Capabilities ---
-  const startPoint = asString(a.flags.branch) ?? presetConfig?.preset.startPoint ?? "HEAD";
-  const defaultNetwork = sessionRec?.caps.network ?? presetConfig?.preset.capabilities?.network ?? true;
-  const defaultExec = sessionRec?.caps.exec ?? presetConfig?.preset.capabilities?.exec ?? true;
-  const network =
-    (a.flags["allow-network"] !== undefined ||
+  const startPoint = asString(a.flags.branch) ??
+    presetConfig?.preset.startPoint ?? "HEAD";
+  const defaultNetwork = sessionRec?.caps.network ??
+    presetConfig?.preset.capabilities?.network ?? true;
+  const defaultExec = sessionRec?.caps.exec ??
+    presetConfig?.preset.capabilities?.exec ?? true;
+  const network = (a.flags["allow-network"] !== undefined ||
       a.flags["block-network"] !== undefined ||
       a.flags["no-network"] !== undefined)
-      ? (boolFlag(a.flags["allow-network"], true) &&
-        !boolFlag(a.flags["block-network"], false) &&
-        !boolFlag(a.flags["no-network"], false))
-      : defaultNetwork;
+    ? (boolFlag(a.flags["allow-network"], true) &&
+      !boolFlag(a.flags["block-network"], false) &&
+      !boolFlag(a.flags["no-network"], false))
+    : defaultNetwork;
   const exec =
     (a.flags["allow-exec"] !== undefined || a.flags["block-exec"] !== undefined)
       ? (boolFlag(a.flags["allow-exec"], true) &&
@@ -270,14 +316,18 @@ export const agentCmd = async (
     ? await loadProfilesOptional(wtPath, profileNames, optionalProfiles)
     : null;
   if (loadedProfiles?.warnings?.length) {
-    for (const w of loadedProfiles.warnings) console.error(`macbox: WARNING: ${w}`);
+    for (const w of loadedProfiles.warnings) {
+      console.error(`macbox: WARNING: ${w}`);
+    }
   }
 
   // --- Merge extra paths ---
   const cliExtraRead = parsePathList(a.flags["allow-fs-read"]);
   const cliExtraWrite = parsePathList(a.flags["allow-fs-rw"]);
-  const presetExtraRead = (presetConfig?.preset.capabilities?.extraReadPaths ?? []).map(expandPath);
-  const presetExtraWrite = (presetConfig?.preset.capabilities?.extraWritePaths ?? []).map(expandPath);
+  const presetExtraRead =
+    (presetConfig?.preset.capabilities?.extraReadPaths ?? []).map(expandPath);
+  const presetExtraWrite =
+    (presetConfig?.preset.capabilities?.extraWritePaths ?? []).map(expandPath);
   const mergedExtraRead = [
     ...presetExtraRead,
     ...((sessionRec?.caps.extraRead ?? []) as ReadonlyArray<string>),
@@ -296,7 +346,9 @@ export const agentCmd = async (
       const ok = p.startsWith(wtPath) || p.startsWith(repo.gitCommonDir) ||
         p.startsWith(repo.gitDir);
       if (!ok) {
-        console.error(`macbox: WARNING: profile grants write access outside sandbox worktree: ${p}`);
+        console.error(
+          `macbox: WARNING: profile grants write access outside sandbox worktree: ${p}`,
+        );
       }
     }
   }
@@ -318,9 +370,15 @@ export const agentCmd = async (
 
   // --- Build command ---
   // At this point, --prompt is guaranteed (required above).
-  const baseCmd = cmdOverride ? [cmdOverride] : [...defaultAgentCmd(effectiveAgent, true)];
+  const baseCmd = cmdOverride
+    ? [cmdOverride]
+    : [...defaultAgentCmd(effectiveAgent, true)];
   if (effectiveAgent === "claude" && cmdOverride) {
-    baseCmd.push("-p", "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions");
+    baseCmd.push(
+      "-p",
+      "--allow-dangerously-skip-permissions",
+      "--dangerously-skip-permissions",
+    );
   }
   const passthrough = a.passthrough;
   const fullCmd = baseCmd.length > 0
@@ -367,7 +425,12 @@ export const agentCmd = async (
       preset: presetConfig?.preset.name,
       presetSource: presetConfig?.source,
       profiles: profileNames,
-      caps: { network, exec, extraRead: mergedExtraRead, extraWrite: mergedExtraWrite },
+      caps: {
+        network,
+        exec,
+        extraRead: mergedExtraRead,
+        extraWrite: mergedExtraWrite,
+      },
       debug,
       trace,
       lastCommand: fullCmd,

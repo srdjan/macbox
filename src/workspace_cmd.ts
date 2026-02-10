@@ -5,7 +5,7 @@ import { ensureDir, ensureGitignoreInmacbox } from "./fs.ts";
 import { defaultAgentProfiles } from "./agent.ts";
 import type { AgentKind } from "./agent.ts";
 import { parseProfileNames } from "./profiles.ts";
-import { expandPath, loadPreset, type LoadedPreset } from "./presets.ts";
+import { expandPath, type LoadedPreset, loadPreset } from "./presets.ts";
 import { saveSession } from "./sessions.ts";
 import { repoIdForRoot } from "./paths.ts";
 import {
@@ -17,27 +17,42 @@ import type { Exit } from "./main.ts";
 import { asString, boolFlag, parsePathList } from "./flags.ts";
 import { validateWorktreeName } from "./validate.ts";
 
-export const workspaceCmd = async (argv: ReadonlyArray<string>): Promise<Exit> => {
+export const workspaceCmd = async (
+  argv: ReadonlyArray<string>,
+): Promise<Exit> => {
   const a = parseArgs(argv);
   const sub = a._[0] as string | undefined;
+  const json = boolFlag(a.flags.json, false);
 
   switch (sub) {
     case "new":
-      return await workspaceNew(a);
+      return await workspaceNew(a, json);
     case "list":
-      return await workspaceList(a);
+      return await workspaceList(a, json);
     case "show":
-      return await workspaceShow(a);
+      return await workspaceShow(a, json);
     case "open":
-      return await workspaceOpen(a);
+      return await workspaceOpen(a, json);
     default:
-      console.log(`macbox workspace: new | list | show <id> | open <id>`);
+      if (json) {
+        console.log(JSON.stringify(
+          {
+            schema: "macbox.workspace.usage.v1",
+            usage: "macbox workspace: new | list | show <id> | open <id>",
+          },
+          null,
+          2,
+        ));
+      } else {
+        console.log(`macbox workspace: new | list | show <id> | open <id>`);
+      }
       return { code: sub ? 2 : 0 };
   }
 };
 
 const workspaceNew = async (
   a: ReturnType<typeof parseArgs>,
+  json: boolean,
 ): Promise<Exit> => {
   const base = asString(a.flags.base) ?? defaultBaseDir();
   const repoHint = asString(a.flags.repo);
@@ -52,6 +67,9 @@ const workspaceNew = async (
   let presetConfig: LoadedPreset | null = null;
   if (presetName) {
     presetConfig = await loadPreset(presetName);
+    for (const w of presetConfig.warnings) {
+      console.error(`macbox: WARNING: ${w}`);
+    }
   }
 
   // Resolve agent from preset (no CLI --agent flag)
@@ -68,7 +86,9 @@ const workspaceNew = async (
     ? `${presetConfig.preset.worktreePrefix}-ws`
     : "ws";
 
-  const worktreeName = validateWorktreeName(asString(a.flags.worktree) ?? worktreeNameDefault);
+  const worktreeName = validateWorktreeName(
+    asString(a.flags.worktree) ?? worktreeNameDefault,
+  );
   const wtPath = await worktreeDir(base, repo.root, worktreeName);
   const wtBranch = `macbox/${worktreeName}`;
   const actualStartPoint = presetConfig?.preset.startPoint ?? startPoint;
@@ -93,11 +113,19 @@ const workspaceNew = async (
   ];
 
   // Merge capabilities
-  const network = boolFlag(a.flags["allow-network"], presetConfig?.preset.capabilities?.network ?? true);
-  const exec = boolFlag(a.flags["allow-exec"], presetConfig?.preset.capabilities?.exec ?? true);
+  const network = boolFlag(
+    a.flags["allow-network"],
+    presetConfig?.preset.capabilities?.network ?? true,
+  );
+  const exec = boolFlag(
+    a.flags["allow-exec"],
+    presetConfig?.preset.capabilities?.exec ?? true,
+  );
 
-  const presetExtraRead = (presetConfig?.preset.capabilities?.extraReadPaths ?? []).map(expandPath);
-  const presetExtraWrite = (presetConfig?.preset.capabilities?.extraWritePaths ?? []).map(expandPath);
+  const presetExtraRead =
+    (presetConfig?.preset.capabilities?.extraReadPaths ?? []).map(expandPath);
+  const presetExtraWrite =
+    (presetConfig?.preset.capabilities?.extraWritePaths ?? []).map(expandPath);
   const cliExtraRead = parsePathList(a.flags["allow-fs-read"]);
   const cliExtraWrite = parsePathList(a.flags["allow-fs-rw"]);
 
@@ -136,19 +164,34 @@ const workspaceNew = async (
     name,
   });
 
-  console.log(`macbox: workspace created`);
-  console.log(`  id:        ${ws.id}`);
-  console.log(`  repo:      ${repoId}`);
-  console.log(`  worktree:  ${worktreeName}`);
-  console.log(`  path:      ${wtPath}`);
-  if (issue) console.log(`  issue:     #${issue}`);
-  console.log(`  session:   ${session.id}`);
+  if (json) {
+    console.log(JSON.stringify(
+      {
+        schema: "macbox.workspace.new.v1",
+        workspace: ws,
+        sessionId: session.id,
+        repoId,
+        issue,
+      },
+      null,
+      2,
+    ));
+  } else {
+    console.log(`macbox: workspace created`);
+    console.log(`  id:        ${ws.id}`);
+    console.log(`  repo:      ${repoId}`);
+    console.log(`  worktree:  ${worktreeName}`);
+    console.log(`  path:      ${wtPath}`);
+    if (issue) console.log(`  issue:     #${issue}`);
+    console.log(`  session:   ${session.id}`);
+  }
 
   return { code: 0 };
 };
 
 const workspaceList = async (
   a: ReturnType<typeof parseArgs>,
+  json: boolean,
 ): Promise<Exit> => {
   const base = asString(a.flags.base) ?? defaultBaseDir();
   const showAll = boolFlag(a.flags.all, false);
@@ -166,17 +209,33 @@ const workspaceList = async (
 
   const workspaces = await listWorkspaces({ baseDir: base, repoId });
 
+  if (json) {
+    console.log(JSON.stringify(
+      {
+        schema: "macbox.workspace.list.v1",
+        workspaces,
+      },
+      null,
+      2,
+    ));
+    return { code: 0 };
+  }
+
   if (workspaces.length === 0) {
     console.log("macbox: no workspaces found.");
     return { code: 0 };
   }
 
   const pad = (s: string, n: number) => s.slice(0, n).padEnd(n);
-  console.log(`${pad("ID", 14)}  ${pad("WORKTREE", 20)}  ${pad("NAME", 15)}  ACCESSED`);
+  console.log(
+    `${pad("ID", 14)}  ${pad("WORKTREE", 20)}  ${pad("NAME", 15)}  ACCESSED`,
+  );
   for (const ws of workspaces) {
     const label = ws.name ?? "";
     console.log(
-      `${pad(ws.id, 14)}  ${pad(ws.worktreeName, 20)}  ${pad(label, 15)}  ${ws.lastAccessedAt.slice(0, 19)}`,
+      `${pad(ws.id, 14)}  ${pad(ws.worktreeName, 20)}  ${pad(label, 15)}  ${
+        ws.lastAccessedAt.slice(0, 19)
+      }`,
     );
   }
   return { code: 0 };
@@ -184,6 +243,7 @@ const workspaceList = async (
 
 const workspaceShow = async (
   a: ReturnType<typeof parseArgs>,
+  json: boolean,
 ): Promise<Exit> => {
   const base = asString(a.flags.base) ?? defaultBaseDir();
   const wsId = a._[1] as string | undefined;
@@ -198,12 +258,25 @@ const workspaceShow = async (
     return { code: 1 };
   }
 
+  if (json) {
+    console.log(JSON.stringify(
+      {
+        schema: "macbox.workspace.show.v1",
+        workspace: ws,
+      },
+      null,
+      2,
+    ));
+    return { code: 0 };
+  }
+
   console.log(JSON.stringify(ws, null, 2));
   return { code: 0 };
 };
 
 const workspaceOpen = async (
   a: ReturnType<typeof parseArgs>,
+  json: boolean,
 ): Promise<Exit> => {
   const base = asString(a.flags.base) ?? defaultBaseDir();
   const wsId = a._[1] as string | undefined;
@@ -218,10 +291,27 @@ const workspaceOpen = async (
     return { code: 1 };
   }
 
+  if (json) {
+    console.log(JSON.stringify(
+      {
+        schema: "macbox.workspace.open.v1",
+        workspaceId: wsId,
+        sessionId: ws.sessionId,
+        path: ws.worktreePath,
+        continueCommand: `macbox --session ${ws.sessionId} --prompt "continue"`,
+      },
+      null,
+      2,
+    ));
+    return { code: 0 };
+  }
+
   // Print session info and an explicit continuation command.
   console.log(`macbox: workspace ${wsId} ready`);
   console.log(`  session: ${ws.sessionId}`);
   console.log(`  path:    ${ws.worktreePath}`);
-  console.log(`\nContinue with: macbox --session ${ws.sessionId} --prompt "continue"`);
+  console.log(
+    `\nContinue with: macbox --session ${ws.sessionId} --prompt "continue"`,
+  );
   return { code: 0 };
 };

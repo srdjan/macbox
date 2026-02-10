@@ -2,12 +2,13 @@ import { parseArgs } from "./mini_args.ts";
 import { detectRepo, removeWorktree } from "./git.ts";
 import { defaultBaseDir, repoIdForRoot, worktreeDir } from "./paths.ts";
 import { mustExec } from "./exec.ts";
-import { asString } from "./flags.ts";
+import { asString, boolFlag } from "./flags.ts";
 
 export const cleanCmd = async (argv: ReadonlyArray<string>) => {
   const a = parseArgs(argv);
   const repoHint = asString(a.flags.repo);
   const base = asString(a.flags.base) ?? defaultBaseDir();
+  const json = boolFlag(a.flags.json, false);
 
   const all = a.flags.all === true || a.flags.all === "true";
   const worktreeName = asString(a.flags.worktree);
@@ -18,16 +19,30 @@ export const cleanCmd = async (argv: ReadonlyArray<string>) => {
   if (all) {
     // Remove all worktrees under this repoId
     const dir = `${base}/worktrees/${repoId}`;
+    const removed: string[] = [];
     // Enumerate directories
     try {
       for await (const e of Deno.readDir(dir)) {
         if (!e.isDirectory) continue;
         const wtPath = `${dir}/${e.name}`;
         await removeWorktree(repo.root, wtPath).catch(() => undefined);
+        removed.push(e.name);
       }
       await mustExec(["rm", "-rf", dir], { quiet: true });
     } catch {
       // nothing to do
+    }
+    if (json) {
+      console.log(JSON.stringify(
+        {
+          schema: "macbox.clean.v1",
+          mode: "all",
+          repoId,
+          removedWorktrees: removed,
+        },
+        null,
+        2,
+      ));
     }
     return { code: 0 };
   }
@@ -37,5 +52,18 @@ export const cleanCmd = async (argv: ReadonlyArray<string>) => {
   }
   const wtPath = await worktreeDir(base, repo.root, worktreeName);
   await removeWorktree(repo.root, wtPath);
+  if (json) {
+    console.log(JSON.stringify(
+      {
+        schema: "macbox.clean.v1",
+        mode: "single",
+        repoId,
+        worktree: worktreeName,
+        path: wtPath,
+      },
+      null,
+      2,
+    ));
+  }
   return { code: 0 };
 };
