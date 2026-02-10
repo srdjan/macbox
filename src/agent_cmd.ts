@@ -30,7 +30,13 @@ import {
   loadPreset,
   validatePresetPaths,
 } from "./presets.ts";
-import { asString, boolFlag, parseEnvPairs, parsePathList } from "./flags.ts";
+import {
+  asString,
+  boolFlag,
+  parseEnvPairs,
+  parsePathList,
+  requireStringFlag,
+} from "./flags.ts";
 import {
   detectAgents,
   pickDefaultAgent,
@@ -40,6 +46,7 @@ import { nextWorktreeName } from "./worktree_naming.ts";
 import { loadMacboxConfigWithWarnings } from "./config.ts";
 import { ensureAuthenticated } from "./auto_auth.ts";
 import { validateWorktreeName, validateWorktreePrefix } from "./validate.ts";
+import { resolveExecCapability, resolveNetworkCapability } from "./caps.ts";
 import type { Exit } from "./main.ts";
 
 const mergeProfiles = (
@@ -51,6 +58,19 @@ const mergeProfiles = (
   if (extra) {
     for (const p of extra.split(",").map((s) => s.trim()).filter(Boolean)) {
       set.add(p);
+    }
+  }
+  return [...set.values()];
+};
+
+const mergePaths = (
+  ...parts: ReadonlyArray<ReadonlyArray<string>>
+): string[] => {
+  const set = new Set<string>();
+  for (const xs of parts) {
+    for (const p of xs) {
+      const expanded = expandPath(p);
+      if (expanded) set.add(expanded);
     }
   }
   return [...set.values()];
@@ -80,15 +100,22 @@ export const agentCmd = async (
   }
 
   // --- Hidden flags ---
-  const base = asString(a.flags.base) ?? defaultBaseDir();
-  const repoHint = asString(a.flags.repo);
-  const cmdFlagRaw = a.flags.cmd;
-  if (cmdFlagRaw === true) {
-    throw new Error(
-      "macbox: --cmd requires a value (e.g., --cmd /path/to/agent)",
-    );
-  }
-  let cmdOverride = asString(cmdFlagRaw);
+  const base = requireStringFlag("base", a.flags.base) ?? defaultBaseDir();
+  const repoHint = requireStringFlag("repo", a.flags.repo);
+  let cmdOverride = requireStringFlag("cmd", a.flags.cmd);
+  const branchFlag = requireStringFlag("branch", a.flags.branch);
+  const presetFlag = requireStringFlag("preset", a.flags.preset);
+  const profileFlag = requireStringFlag("profile", a.flags.profile);
+  const sessionRef = requireStringFlag("session", a.flags.session);
+  const envFlag = requireStringFlag("env", a.flags.env);
+  const allowFsReadRaw = requireStringFlag(
+    "allow-fs-read",
+    a.flags["allow-fs-read"],
+  );
+  const allowFsWriteRaw = requireStringFlag(
+    "allow-fs-rw",
+    a.flags["allow-fs-rw"],
+  );
   const trace = boolFlag(a.flags.trace, false);
   const debug = boolFlag(a.flags.debug, false) || trace;
   const disableHostClaudeProfile = boolFlag(
@@ -107,7 +134,7 @@ export const agentCmd = async (
     }
   }
 
-  const presetName = asString(a.flags.preset) ??
+  const presetName = presetFlag ??
     config?.defaults?.preset;
 
   let presetConfig: LoadedPreset | null = null;
@@ -208,7 +235,6 @@ export const agentCmd = async (
   }
 
   // --- Session lookup (hidden --session flag) ---
-  const sessionRef = asString(a.flags.session);
   let sessionRec: Awaited<ReturnType<typeof loadSessionById>> | null = null;
   if (sessionRef) {
     const sid = await resolveSessionIdForRepo({
@@ -221,7 +247,7 @@ export const agentCmd = async (
   }
 
   // --- Worktree naming (from start.ts: auto-increment) ---
-  const worktreeFlag = asString(a.flags.worktree);
+  const worktreeFlag = requireStringFlag("worktree", a.flags.worktree);
   const safeWorktreeFlag = worktreeFlag
     ? validateWorktreeName(worktreeFlag)
     : undefined;
@@ -251,24 +277,23 @@ export const agentCmd = async (
   const wtPath = await worktreeDir(base, repo.root, worktreeName);
 
   // --- Capabilities ---
-  const startPoint = asString(a.flags.branch) ??
+  const startPoint = branchFlag ??
     presetConfig?.preset.startPoint ?? "HEAD";
   const defaultNetwork = sessionRec?.caps.network ??
     presetConfig?.preset.capabilities?.network ?? true;
   const defaultExec = sessionRec?.caps.exec ??
     presetConfig?.preset.capabilities?.exec ?? true;
-  const network = (a.flags["allow-network"] !== undefined ||
-      a.flags["block-network"] !== undefined ||
-      a.flags["no-network"] !== undefined)
-    ? (boolFlag(a.flags["allow-network"], true) &&
-      !boolFlag(a.flags["block-network"], false) &&
-      !boolFlag(a.flags["no-network"], false))
-    : defaultNetwork;
-  const exec =
-    (a.flags["allow-exec"] !== undefined || a.flags["block-exec"] !== undefined)
-      ? (boolFlag(a.flags["allow-exec"], true) &&
-        !boolFlag(a.flags["block-exec"], false))
-      : defaultExec;
+  const network = resolveNetworkCapability({
+    allowNetwork: a.flags["allow-network"],
+    blockNetwork: a.flags["block-network"],
+    noNetwork: a.flags["no-network"],
+    dflt: defaultNetwork,
+  });
+  const exec = resolveExecCapability({
+    allowExec: a.flags["allow-exec"],
+    blockExec: a.flags["block-exec"],
+    dflt: defaultExec,
+  });
 
   // --- Create worktree ---
   const wtBranch = `macbox/${worktreeName}`;
@@ -281,25 +306,8 @@ export const agentCmd = async (
   await ensureDir(`${mp}/logs`);
   await ensureGitignoreInmacbox(wtPath);
 
-  // Symlink host ~/.claude into sandbox home so Claude CLI can find session auth
-  const hostHome = Deno.env.get("HOME") ?? "";
-  const hostClaudeDir = `${hostHome}/.claude`;
-  const sandboxClaudeLink = `${mp}/home/.claude`;
-  try {
-    await Deno.stat(hostClaudeDir);
-    try {
-      await Deno.remove(sandboxClaudeLink, { recursive: true });
-    } catch {
-      // Link doesn't exist yet, that's fine
-    }
-    await Deno.symlink(hostClaudeDir, sandboxClaudeLink);
-  } catch {
-    // Host .claude doesn't exist, skip symlinking
-  }
-
   // --- Load profiles ---
   const agentProfiles = defaultAgentProfiles(effectiveAgent);
-  const profileFlag = asString(a.flags.profile);
   const defaultProfiles = config?.defaults?.profiles ?? [];
   const profileNames = mergeProfiles(
     [
@@ -321,30 +329,59 @@ export const agentCmd = async (
     }
   }
 
+  // Link host ~/.claude only when host-claude profile is active.
+  const sandboxClaudeLink = `${mp}/home/.claude`;
+  const hasHostClaudeProfile = profileNames.includes("host-claude");
+  if (effectiveAgent === "claude" && hasHostClaudeProfile) {
+    const hostHome = Deno.env.get("HOME") ?? "";
+    const hostClaudeDir = `${hostHome}/.claude`;
+    try {
+      await Deno.stat(hostClaudeDir);
+      try {
+        await Deno.remove(sandboxClaudeLink, { recursive: true });
+      } catch {
+        // Link doesn't exist yet, that's fine
+      }
+      await Deno.symlink(hostClaudeDir, sandboxClaudeLink);
+    } catch {
+      console.error(
+        "macbox: WARNING: host-claude profile is active but ~/.claude was not found",
+      );
+    }
+  } else {
+    try {
+      await Deno.remove(sandboxClaudeLink, { recursive: true });
+    } catch {
+      // No stale link to remove
+    }
+  }
+
   // --- Merge extra paths ---
-  const cliExtraRead = parsePathList(a.flags["allow-fs-read"]);
-  const cliExtraWrite = parsePathList(a.flags["allow-fs-rw"]);
+  const cliExtraRead = parsePathList(allowFsReadRaw).map(expandPath);
+  const cliExtraWrite = parsePathList(allowFsWriteRaw).map(expandPath);
   const presetExtraRead =
     (presetConfig?.preset.capabilities?.extraReadPaths ?? []).map(expandPath);
   const presetExtraWrite =
     (presetConfig?.preset.capabilities?.extraWritePaths ?? []).map(expandPath);
-  const mergedExtraRead = [
-    ...presetExtraRead,
-    ...((sessionRec?.caps.extraRead ?? []) as ReadonlyArray<string>),
-    ...(loadedProfiles?.extraReadPaths ?? []),
-    ...cliExtraRead,
-  ];
-  const mergedExtraWrite = [
-    ...presetExtraWrite,
-    ...((sessionRec?.caps.extraWrite ?? []) as ReadonlyArray<string>),
-    ...(loadedProfiles?.extraWritePaths ?? []),
-    ...cliExtraWrite,
-  ];
+  const mergedExtraRead = mergePaths(
+    presetExtraRead,
+    (sessionRec?.caps.extraRead ?? []) as ReadonlyArray<string>,
+    loadedProfiles?.extraReadPaths ?? [],
+    cliExtraRead,
+  );
+  const mergedExtraWrite = mergePaths(
+    presetExtraWrite,
+    (sessionRec?.caps.extraWrite ?? []) as ReadonlyArray<string>,
+    loadedProfiles?.extraWritePaths ?? [],
+    cliExtraWrite,
+  );
 
   if (mergedExtraWrite.length) {
+    const rootPaths = [wtPath, repo.gitCommonDir, repo.gitDir].map(expandPath);
+    const inRoot = (p: string): boolean =>
+      rootPaths.some((root) => p === root || p.startsWith(`${root}/`));
     for (const p of mergedExtraWrite) {
-      const ok = p.startsWith(wtPath) || p.startsWith(repo.gitCommonDir) ||
-        p.startsWith(repo.gitDir);
+      const ok = inRoot(p);
       if (!ok) {
         console.error(
           `macbox: WARNING: profile grants write access outside sandbox worktree: ${p}`,
@@ -399,7 +436,7 @@ export const agentCmd = async (
   if (presetConfig?.preset.env) {
     for (const [k, v] of Object.entries(presetConfig.preset.env)) env[k] = v;
   }
-  const cliEnv = parseEnvPairs(a.flags.env as string | boolean | undefined);
+  const cliEnv = parseEnvPairs(envFlag);
   for (const [k, v] of Object.entries(cliEnv)) env[k] = v;
   await augmentPathForHostTools(env, profileNames, Deno.env.get("HOME") ?? "");
 

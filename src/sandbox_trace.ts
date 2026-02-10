@@ -22,8 +22,7 @@ export const collectSandboxViolations = async (
   const logPath = "/usr/bin/log";
   await mustExist(logPath, "macbox trace requires /usr/bin/log.");
 
-  const header =
-    `# macbox sandbox violations\n` +
+  const header = `# macbox sandbox violations\n` +
     `session: ${r.session}\n` +
     `start: ${r.start}\n` +
     `end: ${r.end}\n` +
@@ -46,7 +45,9 @@ export const collectSandboxViolations = async (
   ], { quiet: true });
 
   const body = res.code === 0
-    ? (res.stdout.length ? res.stdout : "(no sandbox denials captured in the selected time window)\n")
+    ? (res.stdout.length
+      ? res.stdout
+      : "(no sandbox denials captured in the selected time window)\n")
     : `log show failed (code=${res.code})\n${res.stderr || res.stdout}\n`;
 
   await writeText(r.outFile, header + body);

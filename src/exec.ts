@@ -1,5 +1,13 @@
-export type ExecOk = { readonly code: 0; readonly stdout: string; readonly stderr: string };
-export type ExecErr = { readonly code: number; readonly stdout: string; readonly stderr: string };
+export type ExecOk = {
+  readonly code: 0;
+  readonly stdout: string;
+  readonly stderr: string;
+};
+export type ExecErr = {
+  readonly code: number;
+  readonly stdout: string;
+  readonly stderr: string;
+};
 export type ExecRes = ExecOk | ExecErr;
 
 const td = new TextDecoder();
@@ -28,12 +36,21 @@ export const exec = async (
 
 export const mustExec = async (
   cmd: ReadonlyArray<string>,
-  opts?: { cwd?: string; env?: Record<string, string>; quiet?: boolean; label?: string },
+  opts?: {
+    cwd?: string;
+    env?: Record<string, string>;
+    quiet?: boolean;
+    label?: string;
+  },
 ): Promise<string> => {
   const r = await exec(cmd, opts);
   if (r.code !== 0) {
     const label = opts?.label ? `${opts.label}: ` : "";
-    throw new Error(`${label}command failed (${r.code}): ${cmd.join(" ")}\n${r.stderr || r.stdout}`);
+    throw new Error(
+      `${label}command failed (${r.code}): ${cmd.join(" ")}\n${
+        r.stderr || r.stdout
+      }`,
+    );
   }
   return r.stdout;
 };

@@ -84,7 +84,10 @@ Deno.test("listWorkspaces returns workspaces sorted by lastAccessedAt desc", asy
 
     const all = await listWorkspaces({ baseDir: base, repoId: "abc123def456" });
     assert(all.length === 2, "expected 2 workspaces");
-    assert(all[0].worktreeName === "ws-two", "expected ws-two first (most recent)");
+    assert(
+      all[0].worktreeName === "ws-two",
+      "expected ws-two first (most recent)",
+    );
     assert(all[1].worktreeName === "ws-one", "expected ws-one second");
   });
 });
@@ -109,7 +112,10 @@ Deno.test("findLatestWorkspace returns most recent", async () => {
       worktreePath: "/tmp/wt/ws-two",
     });
 
-    const latest = await findLatestWorkspace({ baseDir: base, repoId: "abc123def456" });
+    const latest = await findLatestWorkspace({
+      baseDir: base,
+      repoId: "abc123def456",
+    });
     assert(latest !== null, "expected to find latest");
     assert(latest!.id === second.id, "expected second workspace as latest");
   });
@@ -126,11 +132,17 @@ Deno.test("findWorkspaceById searches across projects", async () => {
     });
 
     // Search without repoId
-    const found = await findWorkspaceById({ baseDir: base, workspaceId: ws.id });
+    const found = await findWorkspaceById({
+      baseDir: base,
+      workspaceId: ws.id,
+    });
     assert(found !== null, "expected to find workspace");
     assert(found!.id === ws.id, "expected matching id");
 
-    const notFound = await findWorkspaceById({ baseDir: base, workspaceId: "ws-nonexistent" });
+    const notFound = await findWorkspaceById({
+      baseDir: base,
+      workspaceId: "ws-nonexistent",
+    });
     assert(notFound === null, "expected null for unknown id");
   });
 });
@@ -157,7 +169,10 @@ Deno.test("updateWorkspace changes name and updates lastAccessedAt", async () =>
     });
 
     assert(updated.name === "updated name", "expected name updated");
-    assert(updated.lastAccessedAt > ws.lastAccessedAt, "expected lastAccessedAt advanced");
+    assert(
+      updated.lastAccessedAt > ws.lastAccessedAt,
+      "expected lastAccessedAt advanced",
+    );
   });
 });
 

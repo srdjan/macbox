@@ -1,4 +1,4 @@
-import { mustExist, isMacos } from "./os.ts";
+import { isMacos, mustExist } from "./os.ts";
 import { exec } from "./exec.ts";
 
 export type SandboxExec = {
@@ -10,7 +10,10 @@ export const detectSandboxExec = async (): Promise<SandboxExec> => {
   if (!isMacos()) throw new Error("macbox: only supported on macOS (darwin).");
   const sandboxExecPath = "/usr/bin/sandbox-exec";
   const envPath = "/usr/bin/env";
-  await mustExist(sandboxExecPath, "macbox requires /usr/bin/sandbox-exec (Seatbelt).");
+  await mustExist(
+    sandboxExecPath,
+    "macbox requires /usr/bin/sandbox-exec (Seatbelt).",
+  );
   await mustExist(envPath, "macbox requires /usr/bin/env.");
   return { sandboxExecPath, envPath };
 };
@@ -31,7 +34,10 @@ export type SandboxCaptured = {
   readonly stderrTruncated: boolean;
 };
 
-export const runSandboxed = async (s: SandboxExec, r: SandboxRun): Promise<number> => {
+export const runSandboxed = async (
+  s: SandboxExec,
+  r: SandboxRun,
+): Promise<number> => {
   const defs = Object.entries(r.params).flatMap(([k, v]) => [`-D${k}=${v}`]);
 
   // We execute: sandbox-exec -f <profile> -D... -- /usr/bin/env -i KEY=VAL ... <cmd...>
@@ -117,7 +123,11 @@ const readLimited = async (
 export const runSandboxedCapture = async (
   s: SandboxExec,
   r: SandboxRun,
-  opts?: { readonly maxBytes?: number; readonly stdin?: "inherit" | "null"; readonly stream?: boolean },
+  opts?: {
+    readonly maxBytes?: number;
+    readonly stdin?: "inherit" | "null";
+    readonly stream?: boolean;
+  },
 ): Promise<SandboxCaptured> => {
   const defs = Object.entries(r.params).flatMap(([k, v]) => [`-D${k}=${v}`]);
   const envPairs = Object.entries(r.env).map(([k, v]) => `${k}=${v}`);

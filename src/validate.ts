@@ -20,10 +20,14 @@ const assertSafeSegment = (value: string, label: string): string => {
     throw new Error(`macbox: invalid ${label}: ${value}`);
   }
   if (hasPathSeparators(v)) {
-    throw new Error(`macbox: invalid ${label} '${value}' (path separators are not allowed)`);
+    throw new Error(
+      `macbox: invalid ${label} '${value}' (path separators are not allowed)`,
+    );
   }
   if (hasControlChars(v)) {
-    throw new Error(`macbox: invalid ${label} '${value}' (control characters are not allowed)`);
+    throw new Error(
+      `macbox: invalid ${label} '${value}' (control characters are not allowed)`,
+    );
   }
   if (!SAFE_SEGMENT.test(v)) {
     throw new Error(

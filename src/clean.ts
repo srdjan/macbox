@@ -2,16 +2,47 @@ import { parseArgs } from "./mini_args.ts";
 import { detectRepo, removeWorktree } from "./git.ts";
 import { defaultBaseDir, repoIdForRoot, worktreeDir } from "./paths.ts";
 import { mustExec } from "./exec.ts";
-import { asString, boolFlag } from "./flags.ts";
+import { boolFlag, requireStringFlag } from "./flags.ts";
+
+const printCleanUsage = (json: boolean) => {
+  if (json) {
+    console.log(JSON.stringify(
+      {
+        schema: "macbox.clean.usage.v1",
+        usage:
+          "macbox clean [--json] [--worktree <name> | --all] [--repo <path>] [--base <path>]",
+      },
+      null,
+      2,
+    ));
+    return;
+  }
+  console.log(
+    "Usage:\n" +
+      "  macbox clean --worktree <name> [--repo <path>] [--base <path>]\n" +
+      "  macbox clean --all [--repo <path>] [--base <path>]",
+  );
+};
 
 export const cleanCmd = async (argv: ReadonlyArray<string>) => {
   const a = parseArgs(argv);
-  const repoHint = asString(a.flags.repo);
-  const base = asString(a.flags.base) ?? defaultBaseDir();
   const json = boolFlag(a.flags.json, false);
+  if (a.flags.help) {
+    printCleanUsage(json);
+    return { code: 0 };
+  }
+  const repoHint = requireStringFlag("repo", a.flags.repo);
+  const base = requireStringFlag("base", a.flags.base) ?? defaultBaseDir();
 
   const all = a.flags.all === true || a.flags.all === "true";
-  const worktreeName = asString(a.flags.worktree);
+  const worktreeName = requireStringFlag("worktree", a.flags.worktree);
+
+  if (!all && !worktreeName) {
+    throw new Error(
+      "clean: specify --worktree <name> or --all\n" +
+        "  Use: macbox clean --help",
+    );
+  }
 
   const repo = await detectRepo(repoHint);
   const repoId = await repoIdForRoot(repo.root);
@@ -46,9 +77,8 @@ export const cleanCmd = async (argv: ReadonlyArray<string>) => {
     }
     return { code: 0 };
   }
-
   if (!worktreeName) {
-    throw new Error("clean: specify --worktree <name> or --all");
+    throw new Error("clean: internal error: missing worktree name");
   }
   const wtPath = await worktreeDir(base, repo.root, worktreeName);
   await removeWorktree(repo.root, wtPath);

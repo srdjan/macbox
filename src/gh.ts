@@ -18,7 +18,8 @@ export const ghExec = async (
     return {
       code: 1,
       stdout: "",
-      stderr: "macbox: 'gh' CLI not found. Install from https://cli.github.com/",
+      stderr:
+        "macbox: 'gh' CLI not found. Install from https://cli.github.com/",
     };
   }
   return await exec(["gh", ...args], { cwd, quiet: true });

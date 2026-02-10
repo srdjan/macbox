@@ -54,7 +54,11 @@ export const saveSession = async (args: {
   const safeWorktreeName = validateWorktreeName(args.worktreeName);
   const repoId = await repoIdForRoot(args.repoRoot);
   const id = `${repoId}/${safeWorktreeName}`;
-  const filePath = await sessionFileFor(args.baseDir, args.repoRoot, safeWorktreeName);
+  const filePath = await sessionFileFor(
+    args.baseDir,
+    args.repoRoot,
+    safeWorktreeName,
+  );
 
   let createdAt = isoNow();
   try {
@@ -114,7 +118,12 @@ const isSession = (v: unknown): v is SessionRecord => {
 
 export const sessionFileFromId = (baseDir: string, id: string): string => {
   const parsed = parseSessionId(id);
-  return pathJoin(baseDir, "sessions", parsed.repoId, `${parsed.worktreeName}.json`);
+  return pathJoin(
+    baseDir,
+    "sessions",
+    parsed.repoId,
+    `${parsed.worktreeName}.json`,
+  );
 };
 
 export const loadSessionById = async (args: {
@@ -169,7 +178,10 @@ export const listSessions = async (args: {
     }
   }
 
-  out.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+  out.sort((
+    a,
+    b,
+  ) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
   return out;
 };
 
@@ -189,7 +201,11 @@ export const resolveSessionIdForRepo = async (args: {
   readonly agent?: AgentKind;
 }): Promise<string> => {
   if (args.ref === "latest") {
-    const s = await findLatestSession({ baseDir: args.baseDir, repoRoot: args.repoRoot, agent: args.agent });
+    const s = await findLatestSession({
+      baseDir: args.baseDir,
+      repoRoot: args.repoRoot,
+      agent: args.agent,
+    });
     if (!s) throw new Error("macbox: no sessions found (latest)");
     return s.id;
   }
@@ -199,12 +215,16 @@ export const resolveSessionIdForRepo = async (args: {
   return `${repoId}/${validateWorktreeName(args.ref)}`;
 };
 
-export const deleteSession = async (args: { readonly baseDir: string; readonly id: string }) => {
+export const deleteSession = async (
+  args: { readonly baseDir: string; readonly id: string },
+) => {
   const p = sessionFileFromId(args.baseDir, args.id);
   await Deno.remove(p);
 };
 
-export const deleteAllSessions = async (args: { readonly baseDir: string; readonly repoRoot?: string }) => {
+export const deleteAllSessions = async (
+  args: { readonly baseDir: string; readonly repoRoot?: string },
+) => {
   const sessionsBase = pathJoin(args.baseDir, "sessions");
   if (args.repoRoot) {
     const repoId = await repoIdForRoot(args.repoRoot);

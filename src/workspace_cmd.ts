@@ -14,8 +14,37 @@ import {
   listWorkspaces,
 } from "./workspace.ts";
 import type { Exit } from "./main.ts";
-import { asString, boolFlag, parsePathList } from "./flags.ts";
+import { boolFlag, parsePathList, requireStringFlag } from "./flags.ts";
 import { validateWorktreeName } from "./validate.ts";
+import { resolveExecCapability, resolveNetworkCapability } from "./caps.ts";
+
+const printWorkspaceUsage = (json: boolean) => {
+  if (json) {
+    console.log(JSON.stringify(
+      {
+        schema: "macbox.workspace.usage.v1",
+        usage: "macbox workspace: new | list | show <id> | open <id>",
+      },
+      null,
+      2,
+    ));
+    return;
+  }
+  console.log("macbox workspace: new | list | show <id> | open <id>");
+};
+
+const mergePaths = (
+  ...parts: ReadonlyArray<ReadonlyArray<string>>
+): string[] => {
+  const set = new Set<string>();
+  for (const xs of parts) {
+    for (const p of xs) {
+      const expanded = expandPath(p);
+      if (expanded) set.add(expanded);
+    }
+  }
+  return [...set.values()];
+};
 
 export const workspaceCmd = async (
   argv: ReadonlyArray<string>,
@@ -23,6 +52,11 @@ export const workspaceCmd = async (
   const a = parseArgs(argv);
   const sub = a._[0] as string | undefined;
   const json = boolFlag(a.flags.json, false);
+
+  if (!sub || sub === "help" || a.flags.help) {
+    printWorkspaceUsage(json);
+    return { code: 0 };
+  }
 
   switch (sub) {
     case "new":
@@ -34,19 +68,8 @@ export const workspaceCmd = async (
     case "open":
       return await workspaceOpen(a, json);
     default:
-      if (json) {
-        console.log(JSON.stringify(
-          {
-            schema: "macbox.workspace.usage.v1",
-            usage: "macbox workspace: new | list | show <id> | open <id>",
-          },
-          null,
-          2,
-        ));
-      } else {
-        console.log(`macbox workspace: new | list | show <id> | open <id>`);
-      }
-      return { code: sub ? 2 : 0 };
+      printWorkspaceUsage(json);
+      return { code: 2 };
   }
 };
 
@@ -54,14 +77,31 @@ const workspaceNew = async (
   a: ReturnType<typeof parseArgs>,
   json: boolean,
 ): Promise<Exit> => {
-  const base = asString(a.flags.base) ?? defaultBaseDir();
-  const repoHint = asString(a.flags.repo);
-  const name = asString(a.flags.name);
-  const issueRaw = asString(a.flags.issue);
-  const issue = issueRaw ? parseInt(issueRaw, 10) : undefined;
-  const presetName = asString(a.flags.preset);
-  const profileFlag = asString(a.flags.profile);
-  const startPoint = asString(a.flags.branch) ?? "HEAD";
+  const base = requireStringFlag("base", a.flags.base) ?? defaultBaseDir();
+  const repoHint = requireStringFlag("repo", a.flags.repo);
+  const name = requireStringFlag("name", a.flags.name);
+  const issueRaw = requireStringFlag("issue", a.flags.issue);
+  const issue = issueRaw === undefined ? undefined : (() => {
+    if (!/^\d+$/.test(issueRaw)) {
+      throw new Error("macbox: --issue must be an integer");
+    }
+    const parsed = Number(issueRaw);
+    if (!Number.isSafeInteger(parsed)) {
+      throw new Error("macbox: --issue value is too large");
+    }
+    return parsed;
+  })();
+  const presetName = requireStringFlag("preset", a.flags.preset);
+  const profileFlag = requireStringFlag("profile", a.flags.profile);
+  const startPoint = requireStringFlag("branch", a.flags.branch) ?? "HEAD";
+  const allowFsReadRaw = requireStringFlag(
+    "allow-fs-read",
+    a.flags["allow-fs-read"],
+  );
+  const allowFsWriteRaw = requireStringFlag(
+    "allow-fs-rw",
+    a.flags["allow-fs-rw"],
+  );
 
   // Load preset
   let presetConfig: LoadedPreset | null = null;
@@ -87,7 +127,7 @@ const workspaceNew = async (
     : "ws";
 
   const worktreeName = validateWorktreeName(
-    asString(a.flags.worktree) ?? worktreeNameDefault,
+    requireStringFlag("worktree", a.flags.worktree) ?? worktreeNameDefault,
   );
   const wtPath = await worktreeDir(base, repo.root, worktreeName);
   const wtBranch = `macbox/${worktreeName}`;
@@ -113,24 +153,27 @@ const workspaceNew = async (
   ];
 
   // Merge capabilities
-  const network = boolFlag(
-    a.flags["allow-network"],
-    presetConfig?.preset.capabilities?.network ?? true,
-  );
-  const exec = boolFlag(
-    a.flags["allow-exec"],
-    presetConfig?.preset.capabilities?.exec ?? true,
-  );
+  const network = resolveNetworkCapability({
+    allowNetwork: a.flags["allow-network"],
+    blockNetwork: a.flags["block-network"],
+    noNetwork: a.flags["no-network"],
+    dflt: presetConfig?.preset.capabilities?.network ?? true,
+  });
+  const exec = resolveExecCapability({
+    allowExec: a.flags["allow-exec"],
+    blockExec: a.flags["block-exec"],
+    dflt: presetConfig?.preset.capabilities?.exec ?? true,
+  });
 
-  const presetExtraRead =
-    (presetConfig?.preset.capabilities?.extraReadPaths ?? []).map(expandPath);
-  const presetExtraWrite =
-    (presetConfig?.preset.capabilities?.extraWritePaths ?? []).map(expandPath);
-  const cliExtraRead = parsePathList(a.flags["allow-fs-read"]);
-  const cliExtraWrite = parsePathList(a.flags["allow-fs-rw"]);
+  const presetExtraRead = presetConfig?.preset.capabilities?.extraReadPaths ??
+    [];
+  const presetExtraWrite = presetConfig?.preset.capabilities?.extraWritePaths ??
+    [];
+  const cliExtraRead = parsePathList(allowFsReadRaw);
+  const cliExtraWrite = parsePathList(allowFsWriteRaw);
 
-  const mergedExtraRead = [...presetExtraRead, ...cliExtraRead];
-  const mergedExtraWrite = [...presetExtraWrite, ...cliExtraWrite];
+  const mergedExtraRead = mergePaths(presetExtraRead, cliExtraRead);
+  const mergedExtraWrite = mergePaths(presetExtraWrite, cliExtraWrite);
 
   // Create session
   const session = await saveSession({
@@ -193,9 +236,9 @@ const workspaceList = async (
   a: ReturnType<typeof parseArgs>,
   json: boolean,
 ): Promise<Exit> => {
-  const base = asString(a.flags.base) ?? defaultBaseDir();
+  const base = requireStringFlag("base", a.flags.base) ?? defaultBaseDir();
   const showAll = boolFlag(a.flags.all, false);
-  const repoHint = asString(a.flags.repo);
+  const repoHint = requireStringFlag("repo", a.flags.repo);
 
   let repoId: string | undefined;
   if (!showAll) {
@@ -245,7 +288,7 @@ const workspaceShow = async (
   a: ReturnType<typeof parseArgs>,
   json: boolean,
 ): Promise<Exit> => {
-  const base = asString(a.flags.base) ?? defaultBaseDir();
+  const base = requireStringFlag("base", a.flags.base) ?? defaultBaseDir();
   const wsId = a._[1] as string | undefined;
   if (!wsId) {
     console.error("macbox workspace show: provide a workspace id");
@@ -278,7 +321,7 @@ const workspaceOpen = async (
   a: ReturnType<typeof parseArgs>,
   json: boolean,
 ): Promise<Exit> => {
-  const base = asString(a.flags.base) ?? defaultBaseDir();
+  const base = requireStringFlag("base", a.flags.base) ?? defaultBaseDir();
   const wsId = a._[1] as string | undefined;
   if (!wsId) {
     console.error("macbox workspace open: provide a workspace id");

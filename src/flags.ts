@@ -1,7 +1,31 @@
 export const asString = (v: string | boolean | undefined): string | undefined =>
-  v === undefined ? undefined : typeof v === "string" ? v : v ? "true" : "false";
+  v === undefined
+    ? undefined
+    : typeof v === "string"
+    ? v
+    : v
+    ? "true"
+    : "false";
 
-export const boolFlag = (v: string | boolean | undefined, dflt: boolean): boolean => {
+export const requireStringFlag = (
+  flagName: string,
+  v: string | boolean | undefined,
+): string | undefined => {
+  if (v === undefined) return undefined;
+  if (typeof v !== "string") {
+    throw new Error(`macbox: --${flagName} requires a value`);
+  }
+  const s = v.trim();
+  if (!s) {
+    throw new Error(`macbox: --${flagName} requires a non-empty value`);
+  }
+  return s;
+};
+
+export const boolFlag = (
+  v: string | boolean | undefined,
+  dflt: boolean,
+): boolean => {
   if (v === undefined) return dflt;
   if (typeof v === "boolean") return v;
   return v === "true" || v === "1" || v === "yes";

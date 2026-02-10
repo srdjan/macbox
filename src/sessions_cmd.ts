@@ -9,7 +9,7 @@ import {
   loadSessionById,
   resolveSessionIdForRepo,
 } from "./sessions.ts";
-import { asString, boolFlag } from "./flags.ts";
+import { boolFlag, requireStringFlag } from "./flags.ts";
 
 export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
   const usage = () => {
@@ -27,8 +27,8 @@ export const sessionsCmd = async (argv: ReadonlyArray<string>) => {
   };
 
   const a = parseArgs(argv);
-  const base = asString(a.flags.base) ?? defaultBaseDir();
-  const repoHint = asString(a.flags.repo);
+  const base = requireStringFlag("base", a.flags.base) ?? defaultBaseDir();
+  const repoHint = requireStringFlag("repo", a.flags.repo);
   const json = boolFlag(a.flags.json, false);
 
   const [sub, ...rest] = a._;

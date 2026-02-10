@@ -1,6 +1,10 @@
 import { atomicWriteJson } from "./fs.ts";
 import { pathJoin } from "./os.ts";
-import { workspaceDirForProject, workspaceFileFor, workspacesDir } from "./paths.ts";
+import {
+  workspaceDirForProject,
+  workspaceFileFor,
+  workspacesDir,
+} from "./paths.ts";
 
 export type WorkspaceRecord = {
   readonly id: string;
@@ -39,7 +43,11 @@ export const saveWorkspace = async (args: {
   readonly baseDir: string;
   readonly workspace: WorkspaceRecord;
 }): Promise<WorkspaceRecord> => {
-  const filePath = workspaceFileFor(args.baseDir, args.workspace.repoId, args.workspace.id);
+  const filePath = workspaceFileFor(
+    args.baseDir,
+    args.workspace.repoId,
+    args.workspace.id,
+  );
   const rec: WorkspaceRecord = {
     ...args.workspace,
     lastAccessedAt: isoNow(),
@@ -119,7 +127,15 @@ export const listWorkspaces = async (args: {
     }
   }
 
-  out.sort((a, b) => (a.lastAccessedAt < b.lastAccessedAt ? 1 : a.lastAccessedAt > b.lastAccessedAt ? -1 : 0));
+  out.sort((
+    a,
+    b,
+  ) => (a.lastAccessedAt < b.lastAccessedAt
+    ? 1
+    : a.lastAccessedAt > b.lastAccessedAt
+    ? -1
+    : 0)
+  );
   return out;
 };
 

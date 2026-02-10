@@ -1,7 +1,10 @@
 import { macboxCache, macboxHome, macboxTmp } from "./paths.ts";
 import type { AgentKind } from "./agent.ts";
 
-export const sandboxEnv = (worktreePath: string, agent?: AgentKind): Record<string, string> => {
+export const sandboxEnv = (
+  worktreePath: string,
+  agent?: AgentKind,
+): Record<string, string> => {
   const home = macboxHome(worktreePath);
   const cache = macboxCache(worktreePath);
   const tmp = macboxTmp(worktreePath);

@@ -33,10 +33,14 @@ export const hasCredentials = async (agent: AgentKind): Promise<boolean> => {
       }
     }
 
-    console.error("macbox: ANTHROPIC_API_KEY not set and no existing Claude session found");
+    console.error(
+      "macbox: ANTHROPIC_API_KEY not set and no existing Claude session found",
+    );
     console.error("  Set it in your shell profile:");
     console.error("    export ANTHROPIC_API_KEY=sk-ant-...");
-    console.error("  Or get your key from: https://console.anthropic.com/settings/keys");
+    console.error(
+      "  Or get your key from: https://console.anthropic.com/settings/keys",
+    );
     return false;
   }
 

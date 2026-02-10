@@ -32,21 +32,30 @@ export const worktreeDir = async (
   return pathJoin(baseDir, "worktrees", id, safeName);
 };
 
-export const macboxDir = (worktreePath: string) => pathJoin(worktreePath, ".macbox");
+export const macboxDir = (worktreePath: string) =>
+  pathJoin(worktreePath, ".macbox");
 
-export const macboxHome = (worktreePath: string) => pathJoin(macboxDir(worktreePath), "home");
-export const macboxCache = (worktreePath: string) => pathJoin(macboxDir(worktreePath), "cache");
-export const macboxTmp = (worktreePath: string) => pathJoin(macboxDir(worktreePath), "tmp");
-export const macboxLogs = (worktreePath: string) => pathJoin(macboxDir(worktreePath), "logs");
-export const macboxProfile = (worktreePath: string) => pathJoin(macboxDir(worktreePath), "profile.sb");
-
+export const macboxHome = (worktreePath: string) =>
+  pathJoin(macboxDir(worktreePath), "home");
+export const macboxCache = (worktreePath: string) =>
+  pathJoin(macboxDir(worktreePath), "cache");
+export const macboxTmp = (worktreePath: string) =>
+  pathJoin(macboxDir(worktreePath), "tmp");
+export const macboxLogs = (worktreePath: string) =>
+  pathJoin(macboxDir(worktreePath), "logs");
+export const macboxProfile = (worktreePath: string) =>
+  pathJoin(macboxDir(worktreePath), "profile.sb");
 
 export const sessionsDir = (baseDir: string) => pathJoin(baseDir, "sessions");
 export const sessionDirForRepo = async (baseDir: string, repoRoot: string) => {
   const id = await repoIdForRoot(repoRoot);
   return pathJoin(baseDir, "sessions", id);
 };
-export const sessionFileFor = async (baseDir: string, repoRoot: string, worktreeName: string) => {
+export const sessionFileFor = async (
+  baseDir: string,
+  repoRoot: string,
+  worktreeName: string,
+) => {
   const safeName = validateWorktreeName(worktreeName);
   const dir = await sessionDirForRepo(baseDir, repoRoot);
   return pathJoin(dir, `${safeName}.json`);
@@ -63,13 +72,17 @@ export const projectRegistryPath = () => pathJoin(configDir(), "projects.json");
 
 // --- Workspace paths ---
 
-export const workspacesDir = (baseDir: string) => pathJoin(baseDir, "workspaces");
+export const workspacesDir = (baseDir: string) =>
+  pathJoin(baseDir, "workspaces");
 
 export const workspaceDirForProject = (baseDir: string, projectId: string) =>
   pathJoin(baseDir, "workspaces", projectId);
 
-export const workspaceFileFor = (baseDir: string, projectId: string, workspaceId: string) =>
-  pathJoin(baseDir, "workspaces", projectId, `${workspaceId}.json`);
+export const workspaceFileFor = (
+  baseDir: string,
+  projectId: string,
+  workspaceId: string,
+) => pathJoin(baseDir, "workspaces", projectId, `${workspaceId}.json`);
 
 // --- Flow result paths ---
 

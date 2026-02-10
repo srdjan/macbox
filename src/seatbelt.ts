@@ -23,7 +23,7 @@ export type SeatbeltParams = {
 
 const sbEscape = (s: string): string => {
   // SBPL strings are double-quoted; keep this conservative.
-  if (s.includes("\"") || s.includes("\n") || s.includes("\r")) {
+  if (s.includes('"') || s.includes("\n") || s.includes("\r")) {
     throw new Error(`Invalid SBPL path (contains quotes/newlines): ${s}`);
   }
   return s;
@@ -31,11 +31,15 @@ const sbEscape = (s: string): string => {
 
 const sbSubpath = (p: string) => `  (subpath "${sbEscape(p)}")`;
 
-
-const sbMachAllow = (allowAll: boolean | undefined, services: ReadonlyArray<string> | undefined): string => {
+const sbMachAllow = (
+  allowAll: boolean | undefined,
+  services: ReadonlyArray<string> | undefined,
+): string => {
   if (allowAll) return "(allow mach-lookup)\n";
   if (!services || services.length === 0) return "";
-  const lines = services.map((s) => `  (global-name "${sbEscape(s)}")`).join("\n");
+  const lines = services.map((s) => `  (global-name "${sbEscape(s)}")`).join(
+    "\n",
+  );
   return `(allow mach-lookup\n${lines}\n)\n`;
 };
 
@@ -124,6 +128,9 @@ ${net}
 `;
 };
 
-export const writeSeatbeltProfile = async (filePath: string, p: SeatbeltParams) => {
+export const writeSeatbeltProfile = async (
+  filePath: string,
+  p: SeatbeltParams,
+) => {
   await writeText(filePath, seatbeltProfile(p));
 };

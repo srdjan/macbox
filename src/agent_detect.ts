@@ -16,7 +16,9 @@ export const detectAgents = async (): Promise<AgentAvailability> => ({
   codex: await hasBin("codex"),
 });
 
-export const resolveAgentPath = async (agent: AgentKind): Promise<string | null> => {
+export const resolveAgentPath = async (
+  agent: AgentKind,
+): Promise<string | null> => {
   if (agent !== "claude" && agent !== "codex") return null;
   const r = await exec(["which", agent], { quiet: true });
   if (r.code !== 0) return null;
@@ -27,7 +29,9 @@ export const resolveAgentPath = async (agent: AgentKind): Promise<string | null>
 export const pickDefaultAgent = (
   avail: AgentAvailability,
 ): { readonly agent?: AgentKind; readonly ambiguous: boolean } => {
-  if (avail.claude && !avail.codex) return { agent: "claude", ambiguous: false };
+  if (avail.claude && !avail.codex) {
+    return { agent: "claude", ambiguous: false };
+  }
   if (!avail.claude && avail.codex) return { agent: "codex", ambiguous: false };
   if (avail.claude && avail.codex) return { agent: "claude", ambiguous: true };
   return { agent: undefined, ambiguous: false };

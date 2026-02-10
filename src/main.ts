@@ -47,7 +47,7 @@ const main = async (argv: ReadonlyArray<string>): Promise<Exit> => {
     case "codex":
       throw new Error(
         `macbox: '${cmd}' subcommand removed. Agent is now configured via presets or macbox.json defaults.\n` +
-        `  Use: macbox --preset <name>  or set defaults.preset in macbox.json`,
+          `  Use: macbox --preset <name>  or set defaults.preset in macbox.json`,
       );
     case "clean":
       return await cleanCmd(rest);

@@ -1,6 +1,6 @@
 import { parseArgs } from "./mini_args.ts";
 import { listAvailableProfiles, loadProfilesOptional } from "./profiles.ts";
-import { asString, boolFlag } from "./flags.ts";
+import { boolFlag, requireStringFlag } from "./flags.ts";
 
 export const profilesCmd = async (argv: ReadonlyArray<string>) => {
   const a = parseArgs(argv);
@@ -47,7 +47,7 @@ export const profilesCmd = async (argv: ReadonlyArray<string>) => {
       return { code: 0 };
     }
     case "show": {
-      const name = rest[0] ?? asString(a.flags.name);
+      const name = rest[0] ?? requireStringFlag("name", a.flags.name);
       if (!name) {
         usage();
         return { code: 2 };

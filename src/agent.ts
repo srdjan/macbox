@@ -1,13 +1,25 @@
 export type AgentKind = "claude" | "codex" | "custom";
 
-export const defaultAgentCmd = (k: AgentKind, hasPrompt: boolean): ReadonlyArray<string> => {
+export const defaultAgentCmd = (
+  k: AgentKind,
+  hasPrompt: boolean,
+): ReadonlyArray<string> => {
   switch (k) {
     case "claude":
       // Claude Code CLI typically installs as `claude`.
       // Only use -p (pipe mode) when a prompt is provided; otherwise launch interactive TUI.
       return hasPrompt
-        ? ["claude", "-p", "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions"]
-        : ["claude", "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions"];
+        ? [
+          "claude",
+          "-p",
+          "--allow-dangerously-skip-permissions",
+          "--dangerously-skip-permissions",
+        ]
+        : [
+          "claude",
+          "--allow-dangerously-skip-permissions",
+          "--dangerously-skip-permissions",
+        ];
     case "codex":
       // Codex CLI typically installs as `codex`.
       return ["codex"];

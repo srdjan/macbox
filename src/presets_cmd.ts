@@ -1,6 +1,6 @@
 import { parseArgs } from "./mini_args.ts";
 import { listAvailablePresets, loadPreset } from "./presets.ts";
-import { asString, boolFlag } from "./flags.ts";
+import { boolFlag, requireStringFlag } from "./flags.ts";
 
 const usage = () => {
   console.log(
@@ -54,7 +54,7 @@ export const presetsCmd = async (argv: ReadonlyArray<string>) => {
     }
 
     case "show": {
-      const name = rest[0] ?? asString(a.flags.name);
+      const name = rest[0] ?? requireStringFlag("name", a.flags.name);
       if (!name) {
         usage();
         return { code: 2 };
